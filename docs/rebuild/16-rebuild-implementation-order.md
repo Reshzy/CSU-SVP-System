@@ -10,11 +10,16 @@ Suggested stack for this rebuild: Laravel 13 + Inertia React + TypeScript + Post
 
 ## Slice 0 — Foundation
 
-- Laravel 13 app, Postgres, Spatie, Breeze/Inertia React, Tailwind
-- Pint, PHPUnit, Wayfinder (or named routes)
-- Copy numbering helpers and status strings from file 02
+The target app is a **bare** Inertia React starter (no shadcn). See [`17-toolchain.md`](17-toolchain.md) “Bare starter”.
 
-**Done when:** `migrate` on Postgres succeeds; `/health` JSON; feature test bootstrap uses SQLite or Postgres consistently.
+- PostgreSQL in `.env`; tests SQLite in-memory unless a query is Postgres-specific
+- `GET /health` JSON `{ status: ok, time }`, named route `health`
+- Install: TypeScript (if missing), **shadcn/ui**, lucide-react, Wayfinder, Spatie Permission, Pint, Larastan
+- CagSU CSS tokens (maroon `#800000`, gold `#FFD700`, orange `#FF8C00`); App + Guest layouts
+- Do **not** install Pulse, Backup, GSAP, Playwright, Recharts, Horizon, Zod, TanStack Table, Precognition yet
+- Do **not** create the full SVP schema yet (numbering/status strings still come from file 02 when Slice 2–3 start)
+
+**Done when:** `migrate` works on Postgres; `/health` JSON; a sample shadcn page renders in the Inertia shell; tests bootstrap on SQLite or Postgres consistently.
 
 ---
 
@@ -26,6 +31,7 @@ Specs: 01, 11, 12.
 - Positions, departments, users, CEO approval, department requests, ID proof
 - Super-admin gate
 - Register → pending → CEO approve → login
+- Reuse Slice 0 App/Guest layouts and shadcn. Do not add another UI kit.
 
 **Done when:** demo users from file 11 can log in; unapproved users cannot reach dashboard.
 

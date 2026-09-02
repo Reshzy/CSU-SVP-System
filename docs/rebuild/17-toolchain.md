@@ -4,6 +4,41 @@
 
 **Source:** [`00-README.md`](00-README.md), [`16-rebuild-implementation-order.md`](16-rebuild-implementation-order.md), incumbent `composer.json` / `package.json`
 
+**Starter assumption:** the rebuild target is a **bare** Laravel + Inertia React kit (no shadcn, no CagSU theme, maybe no Wayfinder). Slice 0 **installs** the UI kit. Do not assume official starter-kit shadcn is already present.
+
+---
+
+## Bare starter — Slice 0 installs the kit
+
+Do this once. Do not add a second component library in later slices.
+
+**Install in Slice 0:**
+
+- TypeScript for Inertia pages if missing
+- shadcn/ui on the starter’s existing Tailwind major version
+- lucide-react
+- Wayfinder (prefer over Ziggy)
+- Spatie Permission
+- Pint; Larastan if straightforward
+- One **App** layout and one **Guest** layout using shadcn primitives
+- `GET /health` JSON `{ status: ok, time }`, named route `health`
+- PostgreSQL in `.env`; tests stay SQLite in-memory unless a query is Postgres-specific
+
+**CagSU tokens** (map to shadcn CSS variables, not default zinc):
+
+| Token | Hex | Role |
+|-------|-----|------|
+| yellow / gold | `#FFD700` | Primary gold |
+| orange | `#FF8C00` | Secondary |
+| maroon | `#800000` | Accent |
+| blue | `#1D4ED8` | Link / info |
+
+Dark mode only if the starter already uses `class` dark mode. Impeccable **Operate** on these layouts; no GSAP here.
+
+**Do not install in Slice 0:** Pulse, Spatie Backup, GSAP, Playwright, Recharts, Horizon, Precognition, TanStack Table, Zod. Add those when the slice table below says so.
+
+**Later slices:** reuse the Slice 0 shell. Do not replace shadcn.
+
 ---
 
 ## Rule
@@ -96,7 +131,7 @@ flowchart LR
 
 | Slice | Tools |
 |-------|--------|
-| 0 Foundation | TypeScript, shadcn, Wayfinder, Pint, Larastan |
+| 0 Foundation | **Install** TypeScript, shadcn, lucide, Wayfinder, Pint, Larastan, App/Guest layouts, CagSU tokens. Bare kit — do not skip shadcn. |
 | 1 Auth / org | Impeccable Operate on auth/app shell (no GSAP) |
 | 3–5 PR / budget / CEO | Zod + Precognition on forms; TanStack Table on queues |
 | 6–8 BAC / PO | TanStack Table for quotations/AOQ/PO; PHP for AOQ winners |
@@ -113,6 +148,7 @@ Zod + shadcn can tempt “lowest bidder” logic in the browser. [`07-bac-rfq-ao
 
 ## Acceptance criteria
 
+- [ ] Slice 0 added shadcn (the starter did not ship it); later slices reuse that kit only.
 - [ ] Rebuild `composer.json` / `package.json` match this file (or document a deliberate skip).
 - [ ] Form Requests remain the validation source of truth; Zod only mirrors.
 - [ ] GSAP is not imported on authenticated workflow pages.

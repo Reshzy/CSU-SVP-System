@@ -34,7 +34,7 @@ Domain files (01–15) are **stack-agnostic**. Stack lives here, in file 16 (sli
 | Layer | Choice |
 |--------|--------|
 | Runtime | PHP 8.4+ / Laravel 13 |
-| UI | Inertia.js + React 19 + TypeScript |
+| UI | Inertia.js + React 19 + TypeScript. **Bare starter:** install shadcn in Slice 0 ([`17-toolchain.md`](17-toolchain.md)) |
 | CSS | Tailwind CSS 3 (or 4 if you accept a one-time migration) |
 | Auth | Session (Breeze React or equivalent) + Spatie Permission |
 | Database | **PostgreSQL** (tests may stay SQLite in-memory unless a query is Postgres-specific) |
