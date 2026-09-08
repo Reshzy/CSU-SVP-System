@@ -50,6 +50,14 @@ class Department extends Model
     }
 
     /**
+     * @return HasMany<Ppmp, $this>
+     */
+    public function ppmps(): HasMany
+    {
+        return $this->hasMany(Ppmp::class);
+    }
+
+    /**
      * Departments a registering user may select.
      *
      * @param  Builder<$this>  $query

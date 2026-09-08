@@ -1,11 +1,14 @@
 <?php
 
+use App\Http\Controllers\AppConsolidationController;
+use App\Http\Controllers\AppItemController;
 use App\Http\Controllers\Auth\DepartmentRequestController;
 use App\Http\Controllers\Ceo\DepartmentController as CeoDepartmentController;
 use App\Http\Controllers\Ceo\DepartmentRequestController as CeoDepartmentRequestController;
 use App\Http\Controllers\Ceo\UserIdProofController;
 use App\Http\Controllers\Ceo\UserManagementController;
 use App\Http\Controllers\HealthController;
+use App\Http\Controllers\PpmpController;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'welcome')->name('home');
@@ -24,6 +27,30 @@ Route::middleware('guest')->group(function () {
 Route::middleware(['auth', 'verified', 'approved'])->group(function () {
     Route::inertia('dashboard', 'dashboard')->name('dashboard');
     Route::inertia('ui-kit', 'ui-kit')->name('ui-kit');
+
+    // Planning is open to every approved user; PpmpPolicy scopes each plan to
+    // the department that owns it.
+    Route::prefix('ppmp')->name('ppmp.')->group(function () {
+        Route::get('/', [PpmpController::class, 'index'])->name('index');
+        Route::get('import', [PpmpController::class, 'import'])->name('import');
+        Route::post('import', [PpmpController::class, 'processImport'])->name('import.process');
+        Route::get('create', [PpmpController::class, 'create'])->name('create');
+        Route::post('/', [PpmpController::class, 'store'])->name('store');
+        Route::get('{ppmp}/edit', [PpmpController::class, 'edit'])->name('edit');
+        Route::put('{ppmp}', [PpmpController::class, 'update'])->name('update');
+        Route::post('{ppmp}/validate', [PpmpController::class, 'validate'])->name('validate');
+        Route::get('{ppmp}/summary', [PpmpController::class, 'summary'])->name('summary');
+    });
+
+    Route::middleware('can:manage-ps-dbms')->prefix('reference/ps-dbms')->name('ps-dbms.')->group(function () {
+        Route::get('/', [AppItemController::class, 'index'])->name('index');
+        Route::get('import', [AppItemController::class, 'import'])->name('import');
+        Route::post('import', [AppItemController::class, 'processImport'])->name('process');
+    });
+
+    Route::get('bac/app', AppConsolidationController::class)
+        ->middleware('can:view-consolidated-app')
+        ->name('bac.app.index');
 
     Route::middleware('role:Executive Officer')->prefix('ceo')->name('ceo.')->group(function () {
         Route::get('users', [UserManagementController::class, 'index'])->name('users.index');

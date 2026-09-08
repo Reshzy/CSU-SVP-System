@@ -2,9 +2,12 @@ import { Link, usePage } from '@inertiajs/react';
 import {
     BookOpen,
     Building2,
+    ClipboardList,
     FolderGit2,
     Inbox,
+    Layers,
     LayoutGrid,
+    Library,
     Palette,
     UserCheck,
 } from 'lucide-react';
@@ -22,10 +25,13 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard, uiKit } from '@/routes';
+import { index as consolidatedAppIndex } from '@/routes/bac/app';
 import { index as departmentRequestsIndex } from '@/routes/ceo/department-requests';
 import { index as departmentsIndex } from '@/routes/ceo/departments';
 import { index as usersIndex } from '@/routes/ceo/users';
-import type { NavItem } from '@/types';
+import { index as ppmpIndex } from '@/routes/ppmp';
+import { index as psDbmsIndex } from '@/routes/ps-dbms';
+import type { NavItem, SvpRole } from '@/types';
 
 const mainNavItems: NavItem[] = [
     {
@@ -34,10 +40,35 @@ const mainNavItems: NavItem[] = [
         icon: LayoutGrid,
     },
     {
+        title: 'PPMP',
+        href: ppmpIndex(),
+        icon: ClipboardList,
+    },
+    {
         title: 'UI Kit',
         href: uiKit(),
         icon: Palette,
     },
+];
+
+const planningNavItems: NavItem[] = [
+    {
+        title: 'PS-DBMS catalog',
+        href: psDbmsIndex(),
+        icon: Library,
+    },
+    {
+        title: 'Consolidated APP',
+        href: consolidatedAppIndex(),
+        icon: Layers,
+    },
+];
+
+/** Roles holding `manage-ps-dbms` and `view-consolidated-app`. */
+const catalogRoles: SvpRole[] = [
+    'BAC Secretariat',
+    'System Admin',
+    'Executive Officer',
 ];
 
 const executiveOfficerNavItems: NavItem[] = [
@@ -74,9 +105,12 @@ const footerNavItems: NavItem[] = [
 export function AppSidebar() {
     const { auth } = usePage().props;
 
-    // A display hint only; the routes themselves sit behind
-    // `role:Executive Officer` middleware on the server.
+    // Display hints only; the routes themselves sit behind
+    // `role:` and `can:` middleware on the server.
     const isExecutiveOfficer = auth.roles.includes('Executive Officer');
+    const managesCatalog = catalogRoles.some((role) =>
+        auth.roles.includes(role),
+    );
 
     return (
         <Sidebar collapsible="icon" variant="inset">
@@ -94,6 +128,10 @@ export function AppSidebar() {
 
             <SidebarContent>
                 <NavMain items={mainNavItems} />
+
+                {managesCatalog && (
+                    <NavMain items={planningNavItems} label="Planning" />
+                )}
 
                 {isExecutiveOfficer && (
                     <NavMain
