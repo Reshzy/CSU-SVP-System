@@ -19,11 +19,21 @@ class PurchaseRequestItemFactory extends Factory
      */
     public function definition(): array
     {
+        $quantity = fake()->numberBetween(1, 10);
+        $unitCost = fake()->randomFloat(2, 10, 100);
+
         return [
             'purchase_request_id' => PurchaseRequest::factory(),
             'ppmp_item_id' => PpmpItem::factory(),
+            'item_name' => fake()->words(3, true),
+            'unit_of_measure' => 'pc',
             'ppmp_quarter' => 1,
-            'quantity_requested' => fake()->numberBetween(1, 10),
+            'quantity_requested' => $quantity,
+            'estimated_unit_cost' => $unitCost,
+            'estimated_total_cost' => $quantity * $unitCost,
+            'is_lot' => false,
+            'item_status' => 'pending',
+            'procurement_status' => 'pending',
         ];
     }
 }

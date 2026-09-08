@@ -26,4 +26,15 @@ class PpmpQuarterlyTracker
     {
         return (int) ceil((int) $date->format('n') / 3);
     }
+
+    public function quarterLabel(int $quarter): string
+    {
+        return match ($quarter) {
+            1 => 'January to March',
+            2 => 'April to June',
+            3 => 'July to September',
+            4 => 'October to December',
+            default => 'Unknown quarter',
+        };
+    }
 }

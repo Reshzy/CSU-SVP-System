@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\PurchaseRequestStatus;
 use App\Models\Department;
 use App\Models\PurchaseRequest;
 use App\Models\User;
@@ -20,10 +21,15 @@ class PurchaseRequestFactory extends Factory
     public function definition(): array
     {
         return [
+            'pr_number' => PurchaseRequest::generateNextPrNumber(),
             'department_id' => Department::factory(),
             'requester_id' => User::factory(),
-            'status' => 'supply_office_review',
+            'purpose' => fake()->sentence(4),
+            'justification' => fake()->sentence(),
+            'estimated_total' => 0,
+            'status' => PurchaseRequestStatus::SupplyOfficeReview,
             'is_archived' => false,
+            'has_ppmp' => true,
         ];
     }
 

@@ -88,6 +88,11 @@ class PpmpItem extends Model
         };
     }
 
+    public function hasQuantityForQuarter(int $quarter): bool
+    {
+        return $this->getQuarterlyQuantity($quarter) > 0;
+    }
+
     /**
      * Planned quantity minus what live purchase requests already claimed.
      *

@@ -3,6 +3,7 @@ import {
     BookOpen,
     Building2,
     ClipboardList,
+    FileText,
     FolderGit2,
     Inbox,
     Layers,
@@ -31,6 +32,8 @@ import { index as departmentsIndex } from '@/routes/ceo/departments';
 import { index as usersIndex } from '@/routes/ceo/users';
 import { index as ppmpIndex } from '@/routes/ppmp';
 import { index as psDbmsIndex } from '@/routes/ps-dbms';
+import { index as purchaseRequestsIndex } from '@/routes/purchase-requests';
+import { index as supplyPurchaseRequestsIndex } from '@/routes/supply/purchase-requests';
 import type { NavItem, SvpRole } from '@/types';
 
 const mainNavItems: NavItem[] = [
@@ -43,6 +46,11 @@ const mainNavItems: NavItem[] = [
         title: 'PPMP',
         href: ppmpIndex(),
         icon: ClipboardList,
+    },
+    {
+        title: 'Purchase requests',
+        href: purchaseRequestsIndex(),
+        icon: FileText,
     },
     {
         title: 'UI Kit',
@@ -69,6 +77,14 @@ const catalogRoles: SvpRole[] = [
     'BAC Secretariat',
     'System Admin',
     'Executive Officer',
+];
+
+const supplyNavItems: NavItem[] = [
+    {
+        title: 'Supply requests',
+        href: supplyPurchaseRequestsIndex(),
+        icon: Inbox,
+    },
 ];
 
 const executiveOfficerNavItems: NavItem[] = [
@@ -108,6 +124,9 @@ export function AppSidebar() {
     // Display hints only; the routes themselves sit behind
     // `role:` and `can:` middleware on the server.
     const isExecutiveOfficer = auth.roles.includes('Executive Officer');
+    const seesSupplyQueue = (
+        ['Supply Officer', 'System Admin', 'Executive Officer'] as const
+    ).some((role) => auth.roles.includes(role));
     const managesCatalog = catalogRoles.some((role) =>
         auth.roles.includes(role),
     );
@@ -131,6 +150,10 @@ export function AppSidebar() {
 
                 {managesCatalog && (
                     <NavMain items={planningNavItems} label="Planning" />
+                )}
+
+                {seesSupplyQueue && (
+                    <NavMain items={supplyNavItems} label="Supply Office" />
                 )}
 
                 {isExecutiveOfficer && (

@@ -23,6 +23,7 @@ class DatabaseSeeder extends Seeder
             CollegeSeeder::class,
             ComprehensiveUserSeeder::class,
             AppItemSeeder::class,
+            DepartmentBudgetSeeder::class,
         ]);
     }
 }

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\BudgetCheckController;
 use App\Http\Controllers\AppConsolidationController;
 use App\Http\Controllers\AppItemController;
 use App\Http\Controllers\Auth\DepartmentRequestController;
@@ -9,6 +10,9 @@ use App\Http\Controllers\Ceo\UserIdProofController;
 use App\Http\Controllers\Ceo\UserManagementController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\PpmpController;
+use App\Http\Controllers\PurchaseRequestController;
+use App\Http\Controllers\Supply\PurchaseRequestController as SupplyPurchaseRequestController;
+use Illuminate\Foundation\Http\Middleware\HandlePrecognitiveRequests;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'welcome')->name('home');
@@ -51,6 +55,21 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
     Route::get('bac/app', AppConsolidationController::class)
         ->middleware('can:view-consolidated-app')
         ->name('bac.app.index');
+
+    Route::resource('purchase-requests', PurchaseRequestController::class)
+        ->only(['index', 'create', 'show']);
+    Route::post('purchase-requests', [PurchaseRequestController::class, 'store'])
+        ->middleware(HandlePrecognitiveRequests::class)
+        ->name('purchase-requests.store');
+
+    Route::get('api/budget/check', [BudgetCheckController::class, 'check'])
+        ->name('api.budget.check');
+    Route::post('api/budget/validate', [BudgetCheckController::class, 'validateAmount'])
+        ->name('api.budget.validate');
+
+    Route::get('supply/purchase-requests', [SupplyPurchaseRequestController::class, 'index'])
+        ->middleware('can:edit-purchase-request')
+        ->name('supply.purchase-requests.index');
 
     Route::middleware('role:Executive Officer')->prefix('ceo')->name('ceo.')->group(function () {
         Route::get('users', [UserManagementController::class, 'index'])->name('users.index');
