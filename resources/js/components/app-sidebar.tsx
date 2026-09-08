@@ -6,11 +6,13 @@ import {
     FileText,
     FolderGit2,
     Inbox,
+    Landmark,
     Layers,
     LayoutGrid,
     Library,
     Palette,
     UserCheck,
+    Wallet,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
@@ -26,9 +28,12 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard, uiKit } from '@/routes';
+import { index as budgetIndex } from '@/routes/budget';
+import { index as budgetPurchaseRequestsIndex } from '@/routes/budget/purchase-requests';
 import { index as consolidatedAppIndex } from '@/routes/bac/app';
 import { index as departmentRequestsIndex } from '@/routes/ceo/department-requests';
 import { index as departmentsIndex } from '@/routes/ceo/departments';
+import { index as ceoPurchaseRequestsIndex } from '@/routes/ceo/purchase-requests';
 import { index as usersIndex } from '@/routes/ceo/users';
 import { index as ppmpIndex } from '@/routes/ppmp';
 import { index as psDbmsIndex } from '@/routes/ps-dbms';
@@ -87,7 +92,25 @@ const supplyNavItems: NavItem[] = [
     },
 ];
 
+const budgetNavItems: NavItem[] = [
+    {
+        title: 'Budget requests',
+        href: budgetPurchaseRequestsIndex(),
+        icon: Wallet,
+    },
+    {
+        title: 'Department budgets',
+        href: budgetIndex(),
+        icon: Landmark,
+    },
+];
+
 const executiveOfficerNavItems: NavItem[] = [
+    {
+        title: 'CEO requests',
+        href: ceoPurchaseRequestsIndex(),
+        icon: FileText,
+    },
     {
         title: 'User approvals',
         href: usersIndex(),
@@ -127,6 +150,9 @@ export function AppSidebar() {
     const seesSupplyQueue = (
         ['Supply Officer', 'System Admin', 'Executive Officer'] as const
     ).some((role) => auth.roles.includes(role));
+    const seesBudgetOffice = (
+        ['Budget Office', 'System Admin', 'Executive Officer'] as const
+    ).some((role) => auth.roles.includes(role));
     const managesCatalog = catalogRoles.some((role) =>
         auth.roles.includes(role),
     );
@@ -154,6 +180,10 @@ export function AppSidebar() {
 
                 {seesSupplyQueue && (
                     <NavMain items={supplyNavItems} label="Supply Office" />
+                )}
+
+                {seesBudgetOffice && (
+                    <NavMain items={budgetNavItems} label="Budget Office" />
                 )}
 
                 {isExecutiveOfficer && (

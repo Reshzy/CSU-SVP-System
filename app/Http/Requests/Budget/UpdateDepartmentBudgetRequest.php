@@ -12,7 +12,7 @@ class UpdateDepartmentBudgetRequest extends FormRequest
     {
         $user = $this->user();
 
-        return $user instanceof User && $user->can('view-budget-info');
+        return $user instanceof User && $user->can('approve-earmark');
     }
 
     /**

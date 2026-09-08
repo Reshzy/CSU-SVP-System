@@ -121,14 +121,12 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
             ->name('purchase-requests.update');
     });
 
-    Route::middleware('can:view-budget-info')->prefix('budget')->name('budget.')->group(function () {
+    Route::middleware('can:approve-earmark')->prefix('budget')->name('budget.')->group(function () {
         Route::get('departments', [DepartmentBudgetController::class, 'index'])->name('index');
         Route::get('departments/{department}/edit', [DepartmentBudgetController::class, 'edit'])->name('edit');
         Route::put('departments/{department}', [DepartmentBudgetController::class, 'update'])->name('update');
         Route::get('departments/{department}', [DepartmentBudgetController::class, 'show'])->name('show');
-    });
 
-    Route::middleware('can:approve-earmark')->prefix('budget')->name('budget.')->group(function () {
         Route::get('purchase-requests', [BudgetPurchaseRequestController::class, 'index'])
             ->name('purchase-requests.index');
         Route::get('purchase-requests/{purchase_request}/edit', [BudgetPurchaseRequestController::class, 'edit'])
