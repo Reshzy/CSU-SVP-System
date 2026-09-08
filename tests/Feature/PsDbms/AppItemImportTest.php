@@ -3,6 +3,7 @@
 use App\Models\AppItem;
 use App\Models\User;
 use Database\Seeders\RolePermissionSeeder;
+use Illuminate\Http\UploadedFile;
 
 beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
@@ -107,6 +108,13 @@ test('the import fails cleanly when the file cannot be read', function () {
     expect(AppItem::count())->toBe(0);
 });
 
+test('the bac secretariat can open the catalog import screen', function () {
+    $this->actingAs($this->secretariat)
+        ->get(route('ps-dbms.import'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->component('reference/ps-dbms/import'));
+});
+
 test('the bac secretariat can import the catalog through the ui', function () {
     $upload = appCseUpload([
         ['category' => 'OFFICE SUPPLIES'],
@@ -123,7 +131,7 @@ test('the bac secretariat can import the catalog through the ui', function () {
 test('the catalog import rejects a file that is not a csv', function () {
     $this->actingAs($this->secretariat)
         ->post(route('ps-dbms.process'), [
-            'csv_file' => Illuminate\Http\UploadedFile::fake()->create('catalog.pdf', 8, 'application/pdf'),
+            'csv_file' => UploadedFile::fake()->create('catalog.pdf', 8, 'application/pdf'),
             'fiscal_year' => 2025,
         ])
         ->assertSessionHasErrors('csv_file');

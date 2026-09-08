@@ -66,7 +66,11 @@ export function CsvImportForm({
                     </div>
 
                     <Button type="submit" data-test="import-csv-button">
-                        {processing ? <Spinner /> : <Upload className="size-4" />}
+                        {processing ? (
+                            <Spinner />
+                        ) : (
+                            <Upload className="size-4" />
+                        )}
                         {submitLabel}
                     </Button>
                 </>

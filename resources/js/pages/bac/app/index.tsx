@@ -90,8 +90,8 @@ export default function ConsolidatedApp({
                                         colSpan={9}
                                         className="text-muted-foreground py-10 text-center"
                                     >
-                                        No department has validated a {fiscalYear}{' '}
-                                        plan yet.
+                                        No department has validated a{' '}
+                                        {fiscalYear} plan yet.
                                     </TableCell>
                                 </TableRow>
                             )}

@@ -117,8 +117,9 @@ export default function PsDbmsIndex({
                                         colSpan={5}
                                         className="text-muted-foreground py-10 text-center"
                                     >
-                                        No catalog items for {filters.fiscal_year}
-                                        . Import the APP-CSE worksheet first.
+                                        No catalog items for{' '}
+                                        {filters.fiscal_year}. Import the
+                                        APP-CSE worksheet first.
                                     </TableCell>
                                 </TableRow>
                             )}
