@@ -4,8 +4,11 @@ use App\Http\Controllers\Api\BudgetCheckController;
 use App\Http\Controllers\AppConsolidationController;
 use App\Http\Controllers\AppItemController;
 use App\Http\Controllers\Auth\DepartmentRequestController;
+use App\Http\Controllers\Budget\DepartmentBudgetController;
+use App\Http\Controllers\Budget\PurchaseRequestController as BudgetPurchaseRequestController;
 use App\Http\Controllers\Ceo\DepartmentController as CeoDepartmentController;
 use App\Http\Controllers\Ceo\DepartmentRequestController as CeoDepartmentRequestController;
+use App\Http\Controllers\Ceo\PurchaseRequestController as CeoPurchaseRequestController;
 use App\Http\Controllers\Ceo\UserIdProofController;
 use App\Http\Controllers\Ceo\UserManagementController;
 use App\Http\Controllers\HealthController;
@@ -109,6 +112,39 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
             ->name('department-requests.approve');
         Route::post('department-requests/{departmentRequest}/reject', [CeoDepartmentRequestController::class, 'reject'])
             ->name('department-requests.reject');
+
+        Route::get('purchase-requests', [CeoPurchaseRequestController::class, 'index'])
+            ->name('purchase-requests.index');
+        Route::get('purchase-requests/{purchase_request}', [CeoPurchaseRequestController::class, 'show'])
+            ->name('purchase-requests.show');
+        Route::post('purchase-requests/{purchase_request}', [CeoPurchaseRequestController::class, 'update'])
+            ->name('purchase-requests.update');
+    });
+
+    Route::middleware('can:view-budget-info')->prefix('budget')->name('budget.')->group(function () {
+        Route::get('departments', [DepartmentBudgetController::class, 'index'])->name('index');
+        Route::get('departments/{department}/edit', [DepartmentBudgetController::class, 'edit'])->name('edit');
+        Route::put('departments/{department}', [DepartmentBudgetController::class, 'update'])->name('update');
+        Route::get('departments/{department}', [DepartmentBudgetController::class, 'show'])->name('show');
+    });
+
+    Route::middleware('can:approve-earmark')->prefix('budget')->name('budget.')->group(function () {
+        Route::get('purchase-requests', [BudgetPurchaseRequestController::class, 'index'])
+            ->name('purchase-requests.index');
+        Route::get('purchase-requests/{purchase_request}/edit', [BudgetPurchaseRequestController::class, 'edit'])
+            ->name('purchase-requests.edit');
+        Route::put('purchase-requests/{purchase_request}', [BudgetPurchaseRequestController::class, 'update'])
+            ->middleware(HandlePrecognitiveRequests::class)
+            ->name('purchase-requests.update');
+        Route::post('purchase-requests/{purchase_request}/reject', [BudgetPurchaseRequestController::class, 'reject'])
+            ->name('purchase-requests.reject');
+        Route::get('purchase-requests/{purchase_request}/export-earmark', [BudgetPurchaseRequestController::class, 'exportEarmark'])
+            ->name('purchase-requests.export-earmark');
+        Route::get('purchase-requests/{purchase_request}/amend', [BudgetPurchaseRequestController::class, 'amend'])
+            ->name('purchase-requests.amend');
+        Route::patch('purchase-requests/{purchase_request}/amend-earmark', [BudgetPurchaseRequestController::class, 'amendEarmark'])
+            ->middleware(HandlePrecognitiveRequests::class)
+            ->name('purchase-requests.amend-earmark');
     });
 });
 

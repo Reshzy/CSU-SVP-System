@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -117,26 +118,63 @@ class PurchaseRequest extends Model
     use HasFactory;
 
     /**
+     * Fund cluster codes shown on the earmark form and Excel.
+     *
+     * @var array<string, string>
+     */
+    public const FUND_CLUSTERS = [
+        '01' => 'Regular Agency Fund',
+        '05' => 'Off-Budgetary Fund',
+        '06' => 'Income Generating Enterprise',
+        '07' => 'Trust Receipts',
+    ];
+
+    /**
      * Next control number for the given month: PR-MMYY-####.
      */
     public static function generateNextPrNumber(?Carbon $asOf = null): string
     {
-        $asOf ??= now();
-        $prefix = 'PR-'.$asOf->format('my').'-';
+        return static::generateNextControlNumber('pr_number', 'PR', $asOf);
+    }
 
-        $last = static::query()
-            ->where('pr_number', 'like', $prefix.'%')
-            ->orderByDesc('pr_number')
-            ->value('pr_number');
+    /**
+     * Next earmark number for the given month: EM-MMYY-####.
+     */
+    public static function generateNextEarmarkId(?Carbon $asOf = null): string
+    {
+        return static::generateNextControlNumber('earmark_id', 'EM', $asOf);
+    }
 
-        $nextSequence = 1;
+    /**
+     * Next BAC resolution number for the given month: RES-MMYY-####.
+     */
+    public static function generateNextResolutionNumber(?Carbon $asOf = null): string
+    {
+        return static::generateNextControlNumber('resolution_number', 'RES', $asOf);
+    }
 
-        if (is_string($last)) {
-            $parts = explode('-', $last);
-            $nextSequence = ((int) end($parts)) + 1;
+    /**
+     * Fund cluster codes 01/05/06/07 formatted for the earmark document.
+     */
+    public static function formatFundingSourceFromFundCluster(?string $code, ?string $details = null): string
+    {
+        $source = ($code !== null && isset(self::FUND_CLUSTERS[$code]))
+            ? $code.' - '.self::FUND_CLUSTERS[$code]
+            : (string) $code;
+
+        if (filled($details)) {
+            $source .= ' ('.$details.')';
         }
 
-        return $prefix.str_pad((string) $nextSequence, 4, '0', STR_PAD_LEFT);
+        return $source;
+    }
+
+    /**
+     * @return MorphMany<Document, $this>
+     */
+    public function documents(): MorphMany
+    {
+        return $this->morphMany(Document::class, 'documentable');
     }
 
     /**
@@ -242,6 +280,95 @@ class PurchaseRequest extends Model
     }
 
     /**
+     * Budget Office actions that are valid from the current earmark state.
+     *
+     * @return list<string>
+     */
+    public function allowedBudgetActions(): array
+    {
+        $actions = [];
+
+        if ($this->status === PurchaseRequestStatus::BudgetOfficeReview) {
+            $actions[] = 'approve';
+            $actions[] = 'reject';
+        }
+
+        if ($this->canExportEarmark()) {
+            $actions[] = 'export';
+        }
+
+        if (filled($this->earmark_id)) {
+            $actions[] = 'amend';
+        }
+
+        return $actions;
+    }
+
+    /**
+     * Executive Officer actions that are valid from the current status.
+     *
+     * @return list<string>
+     */
+    public function allowedCeoActions(): array
+    {
+        return match ($this->status) {
+            PurchaseRequestStatus::CeoApproval => ['approve', 'reject'],
+            default => [],
+        };
+    }
+
+    public function canExportEarmark(): bool
+    {
+        return $this->status === PurchaseRequestStatus::BudgetOfficeReview
+            || filled($this->earmark_id);
+    }
+
+    /**
+     * Persist earmark columns and derive funding_source from the fund cluster.
+     *
+     * @param  array{
+     *     legal_basis: string,
+     *     earmark_programs_activities: string,
+     *     earmark_responsibility_center: string,
+     *     earmark_date_to: string,
+     *     earmark_object_expenditures: list<array{code?: string|null, description: string, amount: mixed}>,
+     *     fund_cluster_code: string,
+     *     fund_details?: string|null,
+     *     budget_code?: string|null,
+     *     current_step_notes?: string|null
+     * }  $fields
+     */
+    public function fillEarmarkFields(array $fields): void
+    {
+        $code = $fields['fund_cluster_code'];
+        $details = $fields['fund_details'] ?? null;
+
+        $this->forceFill([
+            'legal_basis' => $fields['legal_basis'],
+            'earmark_programs_activities' => $fields['earmark_programs_activities'],
+            'earmark_responsibility_center' => $fields['earmark_responsibility_center'],
+            'earmark_date_to' => $fields['earmark_date_to'],
+            'earmark_object_expenditures' => $fields['earmark_object_expenditures'],
+            'fund_cluster_code' => $code,
+            'fund_details' => $details,
+            'budget_code' => $fields['budget_code'] ?? null,
+            'current_step_notes' => $fields['current_step_notes'] ?? null,
+            'funding_source' => static::formatFundingSourceFromFundCluster($code, $details),
+        ]);
+    }
+
+    public function ensureEarmarkId(): string
+    {
+        if (filled($this->earmark_id)) {
+            return (string) $this->earmark_id;
+        }
+
+        $this->earmark_id = static::generateNextEarmarkId();
+
+        return $this->earmark_id;
+    }
+
+    /**
      * Sum of quotable line qty × unit cost (lot headers and standalones).
      * Falls back to the stored header total when items have not been written
      * yet (the observer `created` hook).
@@ -295,6 +422,29 @@ class PurchaseRequest extends Model
         $fiscalYear = $this->created_at?->year ?? (int) date('Y');
 
         return DepartmentBudget::getOrCreateForDepartment($this->department_id, $fiscalYear);
+    }
+
+    /**
+     * Sequential control number `{kind}-MMYY-####` for the given column.
+     */
+    private static function generateNextControlNumber(string $column, string $kind, ?Carbon $asOf = null): string
+    {
+        $asOf ??= now();
+        $prefix = $kind.'-'.$asOf->format('my').'-';
+
+        $last = static::query()
+            ->where($column, 'like', $prefix.'%')
+            ->orderByDesc($column)
+            ->value($column);
+
+        $nextSequence = 1;
+
+        if (is_string($last)) {
+            $parts = explode('-', $last);
+            $nextSequence = ((int) end($parts)) + 1;
+        }
+
+        return $prefix.str_pad((string) $nextSequence, 4, '0', STR_PAD_LEFT);
     }
 
     protected function casts(): array

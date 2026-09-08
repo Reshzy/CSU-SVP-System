@@ -38,7 +38,18 @@ class PurchaseRequestActionRequired extends Notification implements ShouldQueue
             ->line('PR Number: '.$this->purchaseRequest->pr_number)
             ->line('Step: '.$stepLabel)
             ->line('Purpose: '.$this->purchaseRequest->purpose)
-            ->action('Open dashboard', url(route('dashboard')))
+            ->action('Open request', url($this->actionUrl()))
             ->line('Thank you.');
+    }
+
+    private function actionUrl(): string
+    {
+        $step = WorkflowStepName::tryFrom($this->stepName);
+
+        return match ($step) {
+            WorkflowStepName::BudgetOfficeEarmarking => route('budget.purchase-requests.edit', $this->purchaseRequest),
+            WorkflowStepName::CeoInitialApproval => route('ceo.purchase-requests.show', $this->purchaseRequest),
+            default => route('dashboard'),
+        };
     }
 }

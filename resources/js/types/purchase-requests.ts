@@ -18,9 +18,16 @@ export type PurchaseRequestStatus =
     | 'rejected'
     | 'returned_by_supply';
 
+export type EarmarkExpenditure = {
+    code?: string | null;
+    description: string;
+    amount: number | string;
+};
+
 export type PurchaseRequest = {
     id: number;
     pr_number: string | null;
+    pr_title?: string | null;
     purpose: string;
     justification: string | null;
     estimated_total: string;
@@ -34,6 +41,19 @@ export type PurchaseRequest = {
     replaces_pr_id?: number | null;
     replaced_by_pr_id?: number | null;
     is_archived?: boolean;
+    earmark_id?: string | null;
+    legal_basis?: string | null;
+    earmark_programs_activities?: string | null;
+    earmark_responsibility_center?: string | null;
+    earmark_date_to?: string | null;
+    earmark_object_expenditures?: EarmarkExpenditure[] | null;
+    funding_source?: string | null;
+    fund_cluster_code?: string | null;
+    fund_details?: string | null;
+    budget_code?: string | null;
+    current_step_notes?: string | null;
+    procurement_method?: string | null;
+    resolution_number?: string | null;
     department?: Pick<Department, 'id' | 'name' | 'code'> | null;
     requester?: { id: number; name: string } | null;
     items?: PurchaseRequestItem[];
@@ -69,6 +89,28 @@ export type SupplyAllowedAction =
     | 'return'
     | 'reject'
     | 'cancel';
+
+export type BudgetAllowedAction = 'approve' | 'reject' | 'export' | 'amend';
+
+export type CeoAllowedAction = 'approve' | 'reject';
+
+export type FundClusterOption = {
+    code: string;
+    label: string;
+};
+
+export type DepartmentBudgetRow = {
+    id: number;
+    department_id: number;
+    fiscal_year: number;
+    allocated_budget: string;
+    utilized_budget: string;
+    reserved_budget: string;
+    available_budget: number;
+    committed_budget: number;
+    notes: string | null;
+    department?: Pick<Department, 'id' | 'name' | 'code'> | null;
+};
 
 export type ReplacementFormDefaults = {
     purpose: string;

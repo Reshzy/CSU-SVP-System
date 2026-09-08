@@ -59,6 +59,29 @@ class Document extends Model
     use HasFactory;
 
     /**
+     * Next file record number for the given month: DOC-MMYY-####.
+     */
+    public static function generateNextDocumentNumber(?Carbon $asOf = null): string
+    {
+        $asOf ??= now();
+        $prefix = 'DOC-'.$asOf->format('my').'-';
+
+        $last = static::query()
+            ->where('document_number', 'like', $prefix.'%')
+            ->orderByDesc('document_number')
+            ->value('document_number');
+
+        $nextSequence = 1;
+
+        if (is_string($last)) {
+            $parts = explode('-', $last);
+            $nextSequence = ((int) end($parts)) + 1;
+        }
+
+        return $prefix.str_pad((string) $nextSequence, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
      * @return MorphTo<Model, $this>
      */
     public function documentable(): MorphTo

@@ -111,6 +111,38 @@ class PurchaseRequestActivityLogger
         ]);
     }
 
+    public function logApproved(PurchaseRequest $purchaseRequest, string $description, ?int $userId = null): PurchaseRequestActivity
+    {
+        return $this->log($purchaseRequest, [
+            'action' => 'approved',
+            'description' => $description,
+            'user_id' => $userId ?? Auth::id(),
+        ]);
+    }
+
+    public function logEarmarkAmended(PurchaseRequest $purchaseRequest, ?int $userId = null): PurchaseRequestActivity
+    {
+        return $this->log($purchaseRequest, [
+            'action' => 'earmark_amended',
+            'new_value' => [
+                'earmark_id' => $purchaseRequest->earmark_id,
+                'legal_basis' => $purchaseRequest->legal_basis,
+            ],
+            'description' => 'Earmark details amended',
+            'user_id' => $userId ?? Auth::id(),
+        ]);
+    }
+
+    public function logResolutionGenerated(PurchaseRequest $purchaseRequest, string $resolutionNumber, ?int $userId = null): PurchaseRequestActivity
+    {
+        return $this->log($purchaseRequest, [
+            'action' => 'resolution_generated',
+            'new_value' => ['resolution_number' => $resolutionNumber],
+            'description' => 'BAC resolution generated',
+            'user_id' => $userId ?? Auth::id(),
+        ]);
+    }
+
     /**
      * @param  array{action: string, description: string, user_id?: int|null, old_value?: array<string, mixed>|null, new_value?: array<string, mixed>|null, pr_item_group_id?: int|null}  $data
      */

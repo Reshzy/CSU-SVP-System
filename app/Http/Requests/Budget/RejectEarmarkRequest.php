@@ -1,0 +1,43 @@
+<?php
+
+namespace App\Http\Requests\Budget;
+
+use App\Models\PurchaseRequest;
+use App\Models\User;
+use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Foundation\Http\FormRequest;
+
+class RejectEarmarkRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        $user = $this->user();
+        $purchaseRequest = $this->route('purchase_request');
+
+        if (! $user instanceof User || ! $purchaseRequest instanceof PurchaseRequest) {
+            return false;
+        }
+
+        return $user->can('earmark', $purchaseRequest);
+    }
+
+    /**
+     * @return array<string, ValidationRule|array<mixed>|string>
+     */
+    public function rules(): array
+    {
+        return [
+            'rejection_reason' => ['required', 'string', 'max:2000'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'rejection_reason.required' => 'Give a reason for deferring this purchase request.',
+        ];
+    }
+}
