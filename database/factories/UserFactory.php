@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\ApprovalStatus;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
@@ -33,7 +34,37 @@ class UserFactory extends Factory
             'two_factor_secret' => null,
             'two_factor_recovery_codes' => null,
             'two_factor_confirmed_at' => null,
+            'is_active' => true,
+            'is_archived' => false,
+            'approval_status' => ApprovalStatus::Approved,
+            'approved_at' => now(),
         ];
+    }
+
+    /**
+     * Indicate that the user is still waiting on the Executive Officer.
+     */
+    public function pending(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'is_active' => false,
+            'approval_status' => ApprovalStatus::Pending,
+            'approved_at' => null,
+        ]);
+    }
+
+    /**
+     * Indicate that the Executive Officer turned the registration down.
+     */
+    public function rejected(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'is_active' => false,
+            'approval_status' => ApprovalStatus::Rejected,
+            'approved_at' => null,
+            'rejected_at' => now(),
+            'rejection_reason' => fake()->sentence(),
+        ]);
     }
 
     /**

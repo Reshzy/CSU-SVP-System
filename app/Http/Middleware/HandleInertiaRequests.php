@@ -35,11 +35,17 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $user = $request->user();
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
             'auth' => [
-                'user' => $request->user(),
+                'user' => $user,
+                // For nav and dashboard widgets only. Authorization stays on
+                // the server with Spatie permissions and gates.
+                'roles' => $user?->getRoleNames() ?? [],
+                'primaryRole' => $user?->getPrimarySVPRole(),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];

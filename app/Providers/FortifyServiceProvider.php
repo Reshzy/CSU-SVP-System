@@ -4,13 +4,20 @@ namespace App\Providers;
 
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
+use App\Http\Responses\RegisterResponse;
+use App\Models\Department;
+use App\Models\Position;
+use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
+use Laravel\Fortify\Contracts\RegisterResponse as RegisterResponseContract;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
 
@@ -29,6 +36,10 @@ class FortifyServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Bound in boot, not register: Fortify's own provider is discovered
+        // after this one and binds the default response during register().
+        $this->app->singleton(RegisterResponseContract::class, RegisterResponse::class);
+
         $this->configureActions();
         $this->configureViews();
         $this->configureRateLimiting();
@@ -41,6 +52,36 @@ class FortifyServiceProvider extends ServiceProvider
     {
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
         Fortify::createUsersUsing(CreateNewUser::class);
+
+        $this->configureApprovalCheck();
+    }
+
+    /**
+     * Refuse credentials belonging to an account the Executive Officer has not
+     * cleared.
+     *
+     * This callback backs both `AttemptToAuthenticate` and
+     * `RedirectIfTwoFactorAuthenticatable`, so a pending user never reaches the
+     * two-factor challenge. `EnsureUserIsApproved` covers passkey sign-in,
+     * which skips this pipeline entirely.
+     */
+    private function configureApprovalCheck(): void
+    {
+        Fortify::authenticateUsing(function (Request $request): ?User {
+            $user = User::where('email', $request->input(Fortify::username()))->first();
+
+            if (! $user || ! Hash::check((string) $request->input('password'), $user->password)) {
+                return null;
+            }
+
+            if (! $user->isApproved()) {
+                throw ValidationException::withMessages([
+                    Fortify::username() => __('Your account is awaiting approval by the Executive Officer.'),
+                ]);
+            }
+
+            return $user;
+        });
     }
 
     /**
@@ -69,6 +110,9 @@ class FortifyServiceProvider extends ServiceProvider
 
         Fortify::registerView(fn () => Inertia::render('auth/register', [
             'passwordRules' => Password::defaults()->toPasswordRulesString(),
+            'departments' => Department::selectable()->orderBy('name')->get(['id', 'name', 'code']),
+            'positions' => Position::orderBy('name')->get(['id', 'name']),
+            'idProofTypes' => CreateNewUser::ID_PROOF_TYPES,
         ]));
 
         Fortify::twoFactorChallengeView(fn () => Inertia::render('auth/two-factor-challenge'));
