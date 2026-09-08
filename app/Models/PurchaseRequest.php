@@ -196,18 +196,79 @@ class PurchaseRequest extends Model
     }
 
     /**
-     * Sum of line qty × unit cost. Falls back to the stored header total
-     * when items have not been written yet (the observer `created` hook).
+     * @return HasMany<WorkflowApproval, $this>
+     */
+    public function workflowApprovals(): HasMany
+    {
+        return $this->hasMany(WorkflowApproval::class);
+    }
+
+    /**
+     * @return BelongsTo<PurchaseRequest, $this>
+     */
+    public function replacesPr(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'replaces_pr_id');
+    }
+
+    /**
+     * @return BelongsTo<PurchaseRequest, $this>
+     */
+    public function replacedByPr(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'replaced_by_pr_id');
+    }
+
+    public function canManageLots(): bool
+    {
+        return in_array($this->status, [
+            PurchaseRequestStatus::Submitted,
+            PurchaseRequestStatus::SupplyOfficeReview,
+        ], true);
+    }
+
+    /**
+     * Supply Officer actions that are valid from the current status.
+     *
+     * @return list<string>
+     */
+    public function allowedSupplyActions(): array
+    {
+        return match ($this->status) {
+            PurchaseRequestStatus::Submitted => ['start_review'],
+            PurchaseRequestStatus::SupplyOfficeReview => ['activate', 'return', 'reject', 'cancel'],
+            default => [],
+        };
+    }
+
+    /**
+     * Sum of quotable line qty × unit cost (lot headers and standalones).
+     * Falls back to the stored header total when items have not been written
+     * yet (the observer `created` hook).
      */
     public function calculateTotalCost(): float
     {
-        if ($this->relationLoaded('items') ? $this->items->isNotEmpty() : $this->items()->exists()) {
-            return (float) $this->items->sum(
+        $items = $this->relationLoaded('items')
+            ? $this->items
+            : $this->items()->get();
+
+        $quotable = $items->filter(
+            fn (PurchaseRequestItem $item): bool => $item->parent_lot_id === null,
+        );
+
+        if ($quotable->isNotEmpty()) {
+            return (float) $quotable->sum(
                 fn (PurchaseRequestItem $item): float => (float) $item->quantity_requested * (float) $item->estimated_unit_cost,
             );
         }
 
         return (float) $this->estimated_total;
+    }
+
+    public function refreshEstimatedTotal(): void
+    {
+        $this->unsetRelation('items');
+        $this->forceFill(['estimated_total' => $this->calculateTotalCost()])->save();
     }
 
     /**

@@ -12,7 +12,10 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { purchaseRequestStatusLabel } from '@/lib/purchase-request-status';
+import {
+    purchaseRequestStatusBadgeVariant,
+    purchaseRequestStatusLabel,
+} from '@/lib/purchase-request-status';
 import { create, index, show } from '@/routes/purchase-requests';
 import type { Paginated, PurchaseRequest } from '@/types';
 
@@ -77,7 +80,11 @@ export default function PurchaseRequestsIndex({ requests, canCreate }: Props) {
                                         {request.estimated_total}
                                     </TableCell>
                                     <TableCell>
-                                        <Badge variant="secondary">
+                                        <Badge
+                                            variant={purchaseRequestStatusBadgeVariant(
+                                                request.status,
+                                            )}
+                                        >
                                             {purchaseRequestStatusLabel(
                                                 request.status,
                                             )}

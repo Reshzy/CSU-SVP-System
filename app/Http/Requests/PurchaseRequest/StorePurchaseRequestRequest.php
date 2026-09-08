@@ -151,7 +151,7 @@ class StorePurchaseRequestRequest extends FormRequest
             return;
         }
 
-        $remainingQty = $ppmpItem->getRemainingQuantity($currentQuarter);
+        $remainingQty = $ppmpItem->getRemainingQuantity($currentQuarter, $this->excludedPurchaseRequestId());
 
         if ($remainingQty <= 0) {
             $validator->errors()->add(
@@ -223,5 +223,13 @@ class StorePurchaseRequestRequest extends FormRequest
             'available' => $budget->getAvailableBudget(),
             'required' => $totalCost,
         ];
+    }
+
+    /**
+     * Replacement forms exclude the original request so its qty is available.
+     */
+    protected function excludedPurchaseRequestId(): ?int
+    {
+        return null;
     }
 }

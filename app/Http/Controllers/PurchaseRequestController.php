@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Concerns\FlashesToasts;
 use App\Enums\PurchaseRequestStatus;
 use App\Http\Requests\PurchaseRequest\StorePurchaseRequestRequest;
+use App\Http\Requests\PurchaseRequest\StoreReplacementPurchaseRequestRequest;
 use App\Models\DepartmentBudget;
 use App\Models\Ppmp;
 use App\Models\PpmpItem;
@@ -13,6 +14,7 @@ use App\Models\PurchaseRequestItem;
 use App\Models\User;
 use App\Notifications\PurchaseRequestSubmitted;
 use App\Services\PpmpQuarterlyTracker;
+use App\Services\PurchaseRequestActivityLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -97,7 +99,7 @@ class PurchaseRequestController extends Controller
         return redirect()->route('purchase-requests.show', $purchaseRequest);
     }
 
-    public function show(PurchaseRequest $purchaseRequest): Response
+    public function show(Request $request, PurchaseRequest $purchaseRequest): Response
     {
         Gate::authorize('view', $purchaseRequest);
 
@@ -107,16 +109,100 @@ class PurchaseRequestController extends Controller
             'items' => fn ($query) => $query->orderBy('id'),
         ]);
 
+        $canReplace = $request->user()->can('createReplacement', $purchaseRequest);
+
         return Inertia::render('purchase-requests/show', [
             'purchaseRequest' => $purchaseRequest,
+            'canReplace' => $canReplace,
         ]);
     }
 
+    public function createReplacement(
+        Request $request,
+        PurchaseRequest $originalPr,
+        PpmpQuarterlyTracker $tracker,
+    ): Response {
+        $user = $this->userWhoCanCreate($request);
+
+        Gate::authorize('createReplacement', $originalPr);
+
+        $data = $this->preparePrCreationDataForReplacement($originalPr, $user, $tracker);
+
+        if ($data['ppmp'] === null) {
+            abort(403, 'Your department must have a validated PPMP before creating purchase requests.');
+        }
+
+        return Inertia::render('purchase-requests/replacement', $data);
+    }
+
+    public function storeReplacement(
+        StoreReplacementPurchaseRequestRequest $request,
+        PurchaseRequest $originalPr,
+        PpmpQuarterlyTracker $tracker,
+        PurchaseRequestActivityLogger $activityLogger,
+    ): RedirectResponse {
+        Gate::authorize('createReplacement', $originalPr);
+
+        $budgetCheck = $request->checkBudgetAvailability();
+
+        if (! $budgetCheck['can_reserve']) {
+            return back()
+                ->withInput()
+                ->withErrors(['budget' => $budgetCheck['error']]);
+        }
+
+        $user = $request->user();
+        $validated = $request->validated();
+        $totalCost = $request->calculateTotalCost();
+
+        $replacement = DB::transaction(function () use (
+            $validated,
+            $user,
+            $totalCost,
+            $tracker,
+            $originalPr,
+            $activityLogger,
+        ): PurchaseRequest {
+            $replacement = PurchaseRequest::query()->create([
+                'pr_number' => PurchaseRequest::generateNextPrNumber(),
+                'requester_id' => $user->id,
+                'department_id' => $user->department_id,
+                'purpose' => $validated['purpose'],
+                'justification' => $validated['justification'],
+                'estimated_total' => $totalCost,
+                'status' => PurchaseRequestStatus::SupplyOfficeReview,
+                'submitted_at' => now(),
+                'status_updated_at' => now(),
+                'has_ppmp' => true,
+                'replaces_pr_id' => $originalPr->id,
+            ]);
+
+            $this->createPurchaseRequestItems($replacement, $validated['items'], $tracker, $originalPr->id);
+            $this->notifySupplyOffice($replacement);
+
+            $originalPr->forceFill([
+                'replaced_by_pr_id' => $replacement->id,
+                'is_archived' => true,
+            ])->save();
+
+            $activityLogger->logReplacementCreated($originalPr, $replacement, $user->id);
+
+            return $replacement;
+        });
+
+        $this->toast("Submitted replacement {$replacement->pr_number}.");
+
+        return redirect()->route('purchase-requests.show', $replacement);
+    }
+
     /**
-     * @return array{ppmp: Ppmp, ppmpCategories: list<string>, categorizedItems: array<string, list<array<string, mixed>>>, departmentBudget: array<string, mixed>, fiscalYear: int, currentQuarter: int, quarterLabel: string}
+     * @return array{ppmp: Ppmp|null, ppmpCategories: list<string>, categorizedItems: array<string, list<array<string, mixed>>>, departmentBudget: array<string, mixed>, fiscalYear: int, currentQuarter: int, quarterLabel: string}
      */
-    private function preparePrCreationData(User $user, PpmpQuarterlyTracker $tracker): array
-    {
+    private function preparePrCreationData(
+        User $user,
+        PpmpQuarterlyTracker $tracker,
+        ?int $excludePurchaseRequestId = null,
+    ): array {
         $fiscalYear = $tracker->currentFiscalYear();
         $currentQuarter = $tracker->currentQuarter();
 
@@ -137,7 +223,7 @@ class PurchaseRequestController extends Controller
 
             $ppmpCategories = $grouped->keys()->sort()->values()->all();
 
-            $categorizedItems = $grouped->map(function ($items) use ($currentQuarter) {
+            $categorizedItems = $grouped->map(function ($items) use ($currentQuarter, $excludePurchaseRequestId) {
                 return $items->map(fn (PpmpItem $item): array => [
                     'id' => $item->id,
                     'app_item_id' => $item->app_item_id,
@@ -147,7 +233,7 @@ class PurchaseRequestController extends Controller
                     'category' => $item->appItem->category,
                     'estimated_unit_cost' => $item->estimated_unit_cost,
                     'current_quarter_qty' => $item->getQuarterlyQuantity($currentQuarter),
-                    'remaining_qty' => $item->getRemainingQuantity($currentQuarter),
+                    'remaining_qty' => $item->getRemainingQuantity($currentQuarter, $excludePurchaseRequestId),
                     'has_current_quarter_qty' => $item->hasQuantityForQuarter($currentQuarter),
                 ])->values()->all();
             })->all();
@@ -172,12 +258,54 @@ class PurchaseRequestController extends Controller
     }
 
     /**
+     * Same creation payload as a new PR, with remaining qty that ignores the
+     * returned original and the original's purpose / lines prefilled.
+     *
+     * @return array{ppmp: Ppmp|null, ppmpCategories: list<string>, categorizedItems: array<string, list<array<string, mixed>>>, departmentBudget: array<string, mixed>, fiscalYear: int, currentQuarter: int, quarterLabel: string, originalPr: PurchaseRequest, defaults: array<string, mixed>}
+     */
+    private function preparePrCreationDataForReplacement(
+        PurchaseRequest $originalPr,
+        User $user,
+        PpmpQuarterlyTracker $tracker,
+    ): array {
+        $data = $this->preparePrCreationData($user, $tracker, $originalPr->id);
+
+        $originalPr->load(['items' => fn ($query) => $query->orderBy('id')]);
+
+        $quantities = [];
+        $lotName = '';
+
+        foreach ($originalPr->items as $item) {
+            if ($item->is_lot) {
+                $lotName = (string) ($item->lot_name ?? $item->item_name);
+
+                continue;
+            }
+
+            if ($item->ppmp_item_id !== null) {
+                $quantities[$item->ppmp_item_id] = $item->quantity_requested;
+            }
+        }
+
+        $data['originalPr'] = $originalPr;
+        $data['defaults'] = [
+            'purpose' => $originalPr->purpose,
+            'justification' => $originalPr->justification ?? '',
+            'quantities' => $quantities,
+            'lotName' => $lotName,
+        ];
+
+        return $data;
+    }
+
+    /**
      * @param  array<int, array<string, mixed>>  $items
      */
     private function createPurchaseRequestItems(
         PurchaseRequest $purchaseRequest,
         array $items,
         PpmpQuarterlyTracker $tracker,
+        ?int $excludePurchaseRequestId = null,
     ): void {
         $currentQuarter = $tracker->currentQuarter();
         $createdByIndex = [];
@@ -215,7 +343,7 @@ class PurchaseRequestController extends Controller
                 if ($ppmpItem !== null) {
                     $prItemData['item_category'] = $ppmpItem->appItem?->category;
                     $prItemData['ppmp_planned_qty_for_quarter'] = $ppmpItem->getQuarterlyQuantity($currentQuarter);
-                    $prItemData['ppmp_remaining_qty_at_creation'] = $ppmpItem->getRemainingQuantity($currentQuarter);
+                    $prItemData['ppmp_remaining_qty_at_creation'] = $ppmpItem->getRemainingQuantity($currentQuarter, $excludePurchaseRequestId);
                 }
             }
 

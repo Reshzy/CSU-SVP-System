@@ -33,6 +33,14 @@ type Props = {
     departmentBudget: DepartmentBudgetSummary;
     currentQuarter: number;
     quarterLabel: string;
+    actionUrl?: string;
+    defaults?: {
+        purpose?: string;
+        justification?: string;
+        quantities?: QtyMap;
+        lotName?: string;
+    };
+    submitLabel?: string;
 };
 
 export function PurchaseRequestForm({
@@ -40,14 +48,19 @@ export function PurchaseRequestForm({
     departmentBudget,
     currentQuarter,
     quarterLabel,
+    actionUrl,
+    defaults,
+    submitLabel = 'Submit request',
 }: Props) {
     const lines = useMemo(
         () => Object.values(categorizedItems).flat(),
         [categorizedItems],
     );
 
-    const [quantities, setQuantities] = useState<QtyMap>({});
-    const [lotName, setLotName] = useState('');
+    const [quantities, setQuantities] = useState<QtyMap>(
+        () => defaults?.quantities ?? {},
+    );
+    const [lotName, setLotName] = useState(defaults?.lotName ?? '');
     const [clientError, setClientError] = useState<string | null>(null);
 
     const selected = lines.filter((line) => (quantities[line.id] ?? 0) > 0);
@@ -56,9 +69,9 @@ export function PurchaseRequestForm({
         return sum + (quantities[line.id] ?? 0) * Number(line.estimated_unit_cost);
     }, 0);
 
-    const form = useForm('post', store.url(), {
-        purpose: '',
-        justification: '',
+    const form = useForm('post', actionUrl ?? store.url(), {
+        purpose: defaults?.purpose ?? '',
+        justification: defaults?.justification ?? '',
         items: [] as PurchaseRequestFormValues['items'],
     });
 
@@ -125,7 +138,7 @@ export function PurchaseRequestForm({
 
         setClientError(null);
         form.transform(() => parsed.data);
-        form.post(store.url());
+        form.post(actionUrl ?? store.url());
     };
 
     return (
@@ -279,7 +292,7 @@ export function PurchaseRequestForm({
                 </Button>
                 <Button type="submit" disabled={form.processing}>
                     {form.processing && <Spinner />}
-                    Submit request
+                    {submitLabel}
                 </Button>
             </div>
         </form>

@@ -29,6 +29,11 @@ export type PurchaseRequest = {
     has_ppmp: boolean;
     submitted_at: string | null;
     created_at: string;
+    return_remarks?: string | null;
+    rejection_reason?: string | null;
+    replaces_pr_id?: number | null;
+    replaced_by_pr_id?: number | null;
+    is_archived?: boolean;
     department?: Pick<Department, 'id' | 'name' | 'code'> | null;
     requester?: { id: number; name: string } | null;
     items?: PurchaseRequestItem[];
@@ -49,6 +54,27 @@ export type PurchaseRequestItem = {
     estimated_total_cost: string;
     item_category: string | null;
     ppmp_quarter: number | null;
+};
+
+export type SupplyStandaloneItem = {
+    id: number;
+    item_name: string;
+    item_code: string | null;
+    estimated_total_cost: string;
+};
+
+export type SupplyAllowedAction =
+    | 'start_review'
+    | 'activate'
+    | 'return'
+    | 'reject'
+    | 'cancel';
+
+export type ReplacementFormDefaults = {
+    purpose: string;
+    justification: string;
+    quantities: Record<number, number>;
+    lotName: string;
 };
 
 export type PpmpLineForPr = {

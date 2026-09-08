@@ -24,3 +24,9 @@ export function purchaseRequestStatusLabel(
 ): string {
     return labels[status];
 }
+
+export function purchaseRequestStatusBadgeVariant(
+    status: PurchaseRequestStatus,
+): 'destructive' | 'secondary' {
+    return status === 'rejected' ? 'destructive' : 'secondary';
+}

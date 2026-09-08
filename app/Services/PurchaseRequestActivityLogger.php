@@ -86,6 +86,31 @@ class PurchaseRequestActivityLogger
         ]);
     }
 
+    public function logReplacementCreated(
+        PurchaseRequest $original,
+        PurchaseRequest $replacement,
+        ?int $userId = null,
+    ): PurchaseRequestActivity {
+        return $this->log($original, [
+            'action' => 'replacement_created',
+            'new_value' => [
+                'replacement_pr_id' => $replacement->id,
+                'replacement_pr_number' => $replacement->pr_number,
+            ],
+            'description' => 'Replacement purchase request created',
+            'user_id' => $userId ?? Auth::id(),
+        ]);
+    }
+
+    public function logUpdated(PurchaseRequest $purchaseRequest, string $description, ?int $userId = null): PurchaseRequestActivity
+    {
+        return $this->log($purchaseRequest, [
+            'action' => 'updated',
+            'description' => $description,
+            'user_id' => $userId ?? Auth::id(),
+        ]);
+    }
+
     /**
      * @param  array{action: string, description: string, user_id?: int|null, old_value?: array<string, mixed>|null, new_value?: array<string, mixed>|null, pr_item_group_id?: int|null}  $data
      */

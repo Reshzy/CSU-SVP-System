@@ -10,15 +10,23 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { purchaseRequestStatusLabel } from '@/lib/purchase-request-status';
+import {
+    purchaseRequestStatusBadgeVariant,
+    purchaseRequestStatusLabel,
+} from '@/lib/purchase-request-status';
 import { index } from '@/routes/purchase-requests';
+import { create as createReplacement } from '@/routes/purchase-requests/replacement';
 import type { PurchaseRequest } from '@/types';
 
 type Props = {
     purchaseRequest: PurchaseRequest;
+    canReplace?: boolean;
 };
 
-export default function PurchaseRequestShow({ purchaseRequest }: Props) {
+export default function PurchaseRequestShow({
+    purchaseRequest,
+    canReplace = false,
+}: Props) {
     const items = purchaseRequest.items ?? [];
 
     return (
@@ -32,9 +40,24 @@ export default function PurchaseRequestShow({ purchaseRequest }: Props) {
                         description={`${purchaseRequest.department?.name ?? 'Department'} · Q${purchaseRequest.pr_quarter ?? '—'} · ${purchaseRequest.estimated_total}`}
                     />
                     <div className="flex items-center gap-2">
-                        <Badge variant="secondary">
+                        <Badge
+                            variant={purchaseRequestStatusBadgeVariant(
+                                purchaseRequest.status,
+                            )}
+                        >
                             {purchaseRequestStatusLabel(purchaseRequest.status)}
                         </Badge>
+                        {canReplace && (
+                            <Button asChild>
+                                <Link
+                                    href={createReplacement(
+                                        purchaseRequest.id,
+                                    )}
+                                >
+                                    Create replacement
+                                </Link>
+                            </Button>
+                        )}
                         <Button variant="outline" asChild>
                             <Link href={index()}>All requests</Link>
                         </Button>
@@ -55,6 +78,13 @@ export default function PurchaseRequestShow({ purchaseRequest }: Props) {
                         </p>
                     </div>
                 </div>
+
+                {purchaseRequest.return_remarks && (
+                    <p className="rounded-xl border p-4 text-sm">
+                        <span className="font-medium">Supply remarks: </span>
+                        {purchaseRequest.return_remarks}
+                    </p>
+                )}
 
                 <div className="rounded-xl border">
                     <Table>

@@ -67,9 +67,26 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
     Route::post('api/budget/validate', [BudgetCheckController::class, 'validateAmount'])
         ->name('api.budget.validate');
 
-    Route::get('supply/purchase-requests', [SupplyPurchaseRequestController::class, 'index'])
-        ->middleware('can:edit-purchase-request')
-        ->name('supply.purchase-requests.index');
+    Route::get('purchase-requests/{originalPr}/replacement/create', [PurchaseRequestController::class, 'createReplacement'])
+        ->name('purchase-requests.replacement.create');
+    Route::post('purchase-requests/{originalPr}/replacement', [PurchaseRequestController::class, 'storeReplacement'])
+        ->middleware(HandlePrecognitiveRequests::class)
+        ->name('purchase-requests.replacement.store');
+
+    Route::middleware('can:edit-purchase-request')->prefix('supply')->name('supply.')->group(function () {
+        Route::get('purchase-requests', [SupplyPurchaseRequestController::class, 'index'])
+            ->name('purchase-requests.index');
+        Route::get('purchase-requests/{purchase_request}', [SupplyPurchaseRequestController::class, 'show'])
+            ->name('purchase-requests.show');
+        Route::post('purchase-requests/{purchase_request}/status', [SupplyPurchaseRequestController::class, 'updateStatus'])
+            ->name('purchase-requests.status');
+        Route::post('purchase-requests/{purchase_request}/lots', [SupplyPurchaseRequestController::class, 'storeLot'])
+            ->name('purchase-requests.lots.store');
+        Route::put('purchase-requests/{purchase_request}/lots/{lot}', [SupplyPurchaseRequestController::class, 'updateLot'])
+            ->name('purchase-requests.lots.update');
+        Route::delete('purchase-requests/{purchase_request}/lots/{lot}', [SupplyPurchaseRequestController::class, 'destroyLot'])
+            ->name('purchase-requests.lots.destroy');
+    });
 
     Route::middleware('role:Executive Officer')->prefix('ceo')->name('ceo.')->group(function () {
         Route::get('users', [UserManagementController::class, 'index'])->name('users.index');
