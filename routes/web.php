@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\BudgetCheckController;
 use App\Http\Controllers\AppConsolidationController;
 use App\Http\Controllers\AppItemController;
 use App\Http\Controllers\Auth\DepartmentRequestController;
+use App\Http\Controllers\Auth\DevLoginController;
 use App\Http\Controllers\Bac\MeetingController as BacMeetingController;
 use App\Http\Controllers\Bac\QuotationController as BacQuotationController;
 use App\Http\Controllers\Bac\SignatoryController as BacSignatoryController;
@@ -32,6 +33,9 @@ Route::middleware('guest')->group(function () {
         ->name('register.request-department');
     Route::post('register/request-department', [DepartmentRequestController::class, 'store'])
         ->name('register.request-department.store');
+
+    Route::post('dev/login/{user}', [DevLoginController::class, 'store'])
+        ->name('dev.login');
 });
 
 Route::middleware(['auth', 'verified', 'approved'])->group(function () {
