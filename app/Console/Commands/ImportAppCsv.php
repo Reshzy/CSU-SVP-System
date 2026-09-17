@@ -12,8 +12,8 @@ use Illuminate\Console\Command;
 class ImportAppCsv extends Command
 {
     /**
-     * Looked for in the project root when no file argument is given. No CSV is
-     * committed, so this is a convenience for local imports only.
+     * Default vendored campus export under storage/app/imports when no file
+     * argument is given.
      */
     private const DEFAULT_FILE = 'APP-CSE 2025 Form CICS.csv';
 
@@ -25,7 +25,7 @@ class ImportAppCsv extends Command
 
     public function handle(AppItemImporter $importer): int
     {
-        $file = (string) ($this->argument('file') ?? base_path(self::DEFAULT_FILE));
+        $file = (string) ($this->argument('file') ?? storage_path('app/imports/'.self::DEFAULT_FILE));
 
         if (! is_readable($file)) {
             $this->error("Cannot read [{$file}]. Pass the path to an APP-CSE CSV export.");
