@@ -34,10 +34,10 @@ class StorePurchaseRequestRequest extends FormRequest
             'fund_details' => ['nullable', 'string'],
             'budget_code' => ['nullable', 'string', 'max:100'],
             'items' => ['required', 'array', 'min:1'],
-            'items.*.ppmp_item_id' => ['required', 'integer', 'exists:ppmp_items,id'],
-            'items.*.quantity_requested' => ['required', 'integer', 'min:1'],
+            'items.*.ppmp_item_id' => ['exclude_if:items.*.is_lot,true', 'required', 'integer', 'exists:ppmp_items,id'],
+            'items.*.quantity_requested' => ['exclude_if:items.*.is_lot,true', 'required', 'integer', 'min:1'],
             'items.*.is_lot' => ['sometimes', 'boolean'],
-            'items.*.lot_name' => ['nullable', 'string', 'max:255'],
+            'items.*.lot_name' => ['required_if:items.*.is_lot,true', 'nullable', 'string', 'max:255'],
             'items.*.parent_lot_index' => ['nullable', 'integer', 'min:0'],
         ];
     }
@@ -72,6 +72,20 @@ class StorePurchaseRequestRequest extends FormRequest
 
             foreach ($items as $index => $item) {
                 if (! empty($item['is_lot'])) {
+                    $childCount = collect($items)
+                        ->filter(function (mixed $candidate, int $candidateIndex) use ($index): bool {
+                            if (! is_array($candidate) || $candidateIndex === $index) {
+                                return false;
+                            }
+
+                            return (int) ($candidate['parent_lot_index'] ?? -1) === $index;
+                        })
+                        ->count();
+
+                    if ($childCount < 2) {
+                        $validator->errors()->add("items.{$index}.lot_name", 'A lot requires at least two standalone items.');
+                    }
+
                     continue;
                 }
 

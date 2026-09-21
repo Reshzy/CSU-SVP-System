@@ -1,8 +1,9 @@
-import { Head, useForm } from '@inertiajs/react';
+import { Head, Link, useForm } from '@inertiajs/react';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { store } from '@/routes/bac/signatories';
 
 type User = { id: number; name: string };
 
@@ -26,7 +27,7 @@ export default function BacSignatoriesCreate({ users }: Props) {
                     className="max-w-xl space-y-4"
                     onSubmit={(event) => {
                         event.preventDefault();
-                        form.transform((data) => ({ ...data, user_id: Number(data.user_id) })).post('/bac/signatories');
+                        form.transform((data) => ({ ...data, user_id: Number(data.user_id) })).post(store.url());
                     }}
                 >
                     <div className="space-y-2">

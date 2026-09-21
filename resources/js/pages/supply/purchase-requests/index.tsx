@@ -8,7 +8,7 @@ import {
 import { useMemo } from 'react';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
-import { index, show } from '@/routes/supply/purchase-requests';
+import { index, show, status } from '@/routes/supply/purchase-requests';
 import type { Paginated } from '@/types';
 
 type Row = {
@@ -63,7 +63,7 @@ export default function SupplyPurchaseRequestIndex({ purchaseRequests }: Props) 
                     <Button
                         size="sm"
                         onClick={() =>
-                            router.post(show.url(info.row.original.id).replace(/\/$/, '') + '/status', {
+                            router.post(status.url(info.row.original.id), {
                                 action: 'activate',
                             })
                         }

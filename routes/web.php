@@ -20,6 +20,7 @@ use App\Http\Controllers\PpmpController;
 use App\Http\Controllers\PurchaseRequestController;
 use App\Http\Controllers\PurchaseRequestReplacementController;
 use App\Http\Controllers\Supply\PurchaseRequestController as SupplyPurchaseRequestController;
+use Illuminate\Foundation\Http\Middleware\HandlePrecognitiveRequests;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'welcome')->name('home');
@@ -45,7 +46,9 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
     Route::prefix('purchase-requests')->name('purchase-requests.')->group(function () {
         Route::get('/', [PurchaseRequestController::class, 'index'])->name('index');
         Route::get('create', [PurchaseRequestController::class, 'create'])->name('create');
-        Route::post('/', [PurchaseRequestController::class, 'store'])->name('store');
+        Route::post('/', [PurchaseRequestController::class, 'store'])
+            ->middleware(HandlePrecognitiveRequests::class)
+            ->name('store');
         Route::get('{purchaseRequest}', [PurchaseRequestController::class, 'show'])->name('show');
         Route::get('{purchaseRequest}/replacement/create', [PurchaseRequestReplacementController::class, 'create'])
             ->name('replacement.create');
@@ -139,9 +142,13 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
 
         Route::get('purchase-requests', [EarmarkController::class, 'index'])->name('purchase-requests.index');
         Route::get('purchase-requests/{purchaseRequest}/edit', [EarmarkController::class, 'edit'])->name('purchase-requests.edit');
-        Route::put('purchase-requests/{purchaseRequest}', [EarmarkController::class, 'update'])->name('purchase-requests.update');
+        Route::put('purchase-requests/{purchaseRequest}', [EarmarkController::class, 'update'])
+            ->middleware(HandlePrecognitiveRequests::class)
+            ->name('purchase-requests.update');
         Route::post('purchase-requests/{purchaseRequest}/reject', [EarmarkController::class, 'reject'])->name('purchase-requests.reject');
-        Route::patch('purchase-requests/{purchaseRequest}/amend-earmark', [EarmarkController::class, 'amend'])->name('purchase-requests.amend-earmark');
+        Route::patch('purchase-requests/{purchaseRequest}/amend-earmark', [EarmarkController::class, 'amend'])
+            ->middleware(HandlePrecognitiveRequests::class)
+            ->name('purchase-requests.amend-earmark');
         Route::get('purchase-requests/{purchaseRequest}/export-earmark', [EarmarkController::class, 'export'])->name('purchase-requests.export-earmark');
     });
 

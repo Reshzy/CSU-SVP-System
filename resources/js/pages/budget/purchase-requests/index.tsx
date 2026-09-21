@@ -1,7 +1,7 @@
 import { Head, Link } from '@inertiajs/react';
 import Heading from '@/components/heading';
 import { index as budgetIndex } from '@/routes/budget';
-import { edit } from '@/routes/budget/purchase-requests';
+import { edit, index as earmarkIndex } from '@/routes/budget/purchase-requests';
 import type { Paginated } from '@/types';
 
 type Row = {
@@ -54,6 +54,6 @@ export default function BudgetPurchaseRequestIndex({ purchaseRequests }: Props) 
 BudgetPurchaseRequestIndex.layout = {
     breadcrumbs: [
         { title: 'Budgets', href: budgetIndex() },
-        { title: 'Earmark queue', href: '/budget/purchase-requests' },
+        { title: 'Earmark queue', href: earmarkIndex() },
     ],
 };

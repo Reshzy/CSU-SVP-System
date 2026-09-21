@@ -3,6 +3,7 @@ import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { store } from '@/routes/bac/meetings';
 
 export default function BacMeetingsCreate() {
     const form = useForm({
@@ -22,7 +23,7 @@ export default function BacMeetingsCreate() {
                     className="max-w-xl space-y-4"
                     onSubmit={(event) => {
                         event.preventDefault();
-                        form.post('/bac/meetings');
+                        form.post(store.url());
                     }}
                 >
                     <div className="space-y-2">

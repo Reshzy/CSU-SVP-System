@@ -2,7 +2,7 @@ import { Head, Link, useForm } from '@inertiajs/react';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { index, show } from '@/routes/ceo/purchase-requests';
+import { index, show, update } from '@/routes/ceo/purchase-requests';
 import type { Paginated } from '@/types';
 
 type Row = {
@@ -84,7 +84,7 @@ export default function CeoPurchaseRequestShow({ purchaseRequest, statusLabel }:
                     className="max-w-xl space-y-3"
                     onSubmit={(event) => {
                         event.preventDefault();
-                        form.post(`/ceo/purchase-requests/${purchaseRequest.id}`);
+                        form.post(update.url(purchaseRequest.id));
                     }}
                 >
                     <div className="flex gap-2">

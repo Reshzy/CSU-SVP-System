@@ -3,6 +3,7 @@ import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { update } from '@/routes/bac/signatories';
 
 type User = { id: number; name: string };
 type Signatory = {
@@ -34,7 +35,7 @@ export default function BacSignatoriesEdit({ signatory, users }: Props) {
                     className="max-w-xl space-y-4"
                     onSubmit={(event) => {
                         event.preventDefault();
-                        form.transform((data) => ({ ...data, user_id: Number(data.user_id) })).put(`/bac/signatories/${signatory.id}`);
+                        form.transform((data) => ({ ...data, user_id: Number(data.user_id) })).put(update.url(signatory.id));
                     }}
                 >
                     <div className="space-y-2">

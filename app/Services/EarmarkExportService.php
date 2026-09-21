@@ -50,6 +50,8 @@ class EarmarkExportService
             $row++;
         }
 
+        $sheet->setCellValue('B27', now()->format('Y-m-d'));
+
         $directory = storage_path('app/temp');
         if (! is_dir($directory)) {
             mkdir($directory, 0755, true);

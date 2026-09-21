@@ -1,15 +1,26 @@
 import { Head, useForm } from '@inertiajs/react';
+import { earmarkSchema, zodIssuesToFormErrors } from '@/lib/schemas';
 import Heading from '@/components/heading';
+import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { usePrecognitiveForm } from '@/hooks/use-precognitive-form';
+import {
+    amendEarmark,
+    exportEarmark,
+    index,
+    reject,
+    update,
+} from '@/routes/budget/purchase-requests';
 
 type PurchaseRequest = {
     id: number;
     pr_number: string | null;
     pr_title: string | null;
     status: string;
+    earmark_id: string | null;
     legal_basis: string | null;
     earmark_programs_activities: string | null;
     earmark_responsibility_center: string | null;
@@ -22,16 +33,65 @@ type Props = {
     statusLabel: string;
 };
 
-export default function BudgetPurchaseRequestEdit({ purchaseRequest, statusLabel }: Props) {
-    const form = useForm({
-        legal_basis: purchaseRequest.legal_basis ?? 'Section 86 of RA 9184',
-        earmark_programs_activities: purchaseRequest.earmark_programs_activities ?? '',
-        earmark_responsibility_center: purchaseRequest.earmark_responsibility_center ?? '',
-        earmark_date_to: purchaseRequest.earmark_date_to ?? '',
-        current_step_notes: purchaseRequest.current_step_notes ?? '',
-        earmark_object_expenditures: [{ description: 'Supplies', amount: 0 }],
+function dateInputValue(value: string | null): string {
+    return value ? value.slice(0, 10) : '';
+}
+
+export default function BudgetPurchaseRequestEdit({
+    purchaseRequest,
+    statusLabel,
+}: Props) {
+    const form = usePrecognitiveForm(
+        'put',
+        update.url(purchaseRequest.id),
+        {
+            legal_basis: purchaseRequest.legal_basis ?? 'Section 86 of RA 9184',
+            earmark_programs_activities:
+                purchaseRequest.earmark_programs_activities ?? '',
+            earmark_responsibility_center:
+                purchaseRequest.earmark_responsibility_center ?? '',
+            earmark_date_to: dateInputValue(purchaseRequest.earmark_date_to),
+            current_step_notes: purchaseRequest.current_step_notes ?? '',
+            earmark_object_expenditures: [
+                { description: 'Supplies', amount: 0 },
+            ],
+        },
+    );
+
+    const rejectForm = useForm({
         rejection_reason: '',
     });
+
+    function earmarkPayload() {
+        return {
+            legal_basis: form.data.legal_basis,
+            earmark_programs_activities: form.data.earmark_programs_activities,
+            earmark_responsibility_center:
+                form.data.earmark_responsibility_center,
+            earmark_date_to: form.data.earmark_date_to,
+            current_step_notes: form.data.current_step_notes,
+            earmark_object_expenditures:
+                form.data.earmark_object_expenditures.map((row) => ({
+                    description: row.description,
+                    amount: Number(row.amount ?? 0),
+                })),
+        };
+    }
+
+    function applyZod(): boolean {
+        const parsed = earmarkSchema.safeParse(earmarkPayload());
+
+        if (!parsed.success) {
+            form.setError(zodIssuesToFormErrors(parsed.error));
+
+            return false;
+        }
+
+        return true;
+    }
+
+    const canApprove = purchaseRequest.status === 'budget_office_review';
+    const canAmend = Boolean(purchaseRequest.earmark_id);
 
     return (
         <>
@@ -46,23 +106,41 @@ export default function BudgetPurchaseRequestEdit({ purchaseRequest, statusLabel
                     className="grid max-w-3xl gap-4"
                     onSubmit={(event) => {
                         event.preventDefault();
-                        form.put(`/budget/purchase-requests/${purchaseRequest.id}`);
+
+                        if (!applyZod()) {
+                            return;
+                        }
+
+                        form.put(update.url(purchaseRequest.id));
                     }}
                 >
                     <div className="space-y-2">
                         <Label>Legal basis</Label>
                         <Input
                             value={form.data.legal_basis}
-                            onChange={(event) => form.setData('legal_basis', event.target.value)}
+                            onChange={(event) =>
+                                form.setData('legal_basis', event.target.value)
+                            }
+                            onBlur={() => form.validate('legal_basis')}
                         />
+                        <InputError message={form.errors.legal_basis} />
                     </div>
                     <div className="space-y-2">
                         <Label>Programs / activities</Label>
                         <Textarea
                             value={form.data.earmark_programs_activities}
                             onChange={(event) =>
-                                form.setData('earmark_programs_activities', event.target.value)
+                                form.setData(
+                                    'earmark_programs_activities',
+                                    event.target.value,
+                                )
                             }
+                            onBlur={() =>
+                                form.validate('earmark_programs_activities')
+                            }
+                        />
+                        <InputError
+                            message={form.errors.earmark_programs_activities}
                         />
                     </div>
                     <div className="space-y-2">
@@ -70,7 +148,18 @@ export default function BudgetPurchaseRequestEdit({ purchaseRequest, statusLabel
                         <Input
                             value={form.data.earmark_responsibility_center}
                             onChange={(event) =>
-                                form.setData('earmark_responsibility_center', event.target.value)
+                                form.setData(
+                                    'earmark_responsibility_center',
+                                    event.target.value,
+                                )
+                            }
+                            onBlur={() =>
+                                form.validate('earmark_responsibility_center')
+                            }
+                        />
+                        <InputError
+                            message={
+                                form.errors.earmark_responsibility_center
                             }
                         />
                     </div>
@@ -79,34 +168,82 @@ export default function BudgetPurchaseRequestEdit({ purchaseRequest, statusLabel
                         <Input
                             type="date"
                             value={form.data.earmark_date_to}
-                            onChange={(event) => form.setData('earmark_date_to', event.target.value)}
-                        />
-                    </div>
-                    <div className="flex gap-2">
-                        <Button type="submit" disabled={form.processing}>
-                            Approve earmark
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() =>
-                                form.post(`/budget/purchase-requests/${purchaseRequest.id}/reject`, {
-                                    data: { rejection_reason: form.data.rejection_reason || 'Deferred' },
-                                })
+                            onChange={(event) =>
+                                form.setData(
+                                    'earmark_date_to',
+                                    event.target.value,
+                                )
                             }
-                        >
-                            Defer
-                        </Button>
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Deferral reason</Label>
-                        <Textarea
-                            value={form.data.rejection_reason}
-                            onChange={(event) => form.setData('rejection_reason', event.target.value)}
+                            onBlur={() => form.validate('earmark_date_to')}
                         />
+                        <InputError message={form.errors.earmark_date_to} />
                     </div>
+                    <div className="flex flex-wrap gap-2">
+                        {canApprove && (
+                            <Button type="submit" disabled={form.processing}>
+                                Approve earmark
+                            </Button>
+                        )}
+                        {canAmend && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                disabled={form.processing}
+                                onClick={() => {
+                                    if (!applyZod()) {
+                                        return;
+                                    }
+
+                                    form.patch(
+                                        amendEarmark.url(purchaseRequest.id),
+                                    );
+                                }}
+                            >
+                                Amend
+                            </Button>
+                        )}
+                        <Button variant="outline" asChild>
+                            <a href={exportEarmark.url(purchaseRequest.id)}>
+                                Export earmark
+                            </a>
+                        </Button>
+                        {canApprove && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() =>
+                                    rejectForm.post(
+                                        reject.url(purchaseRequest.id),
+                                    )
+                                }
+                            >
+                                Defer
+                            </Button>
+                        )}
+                    </div>
+                    {canApprove && (
+                        <div className="space-y-2">
+                            <Label>Deferral reason</Label>
+                            <Textarea
+                                value={rejectForm.data.rejection_reason}
+                                onChange={(event) =>
+                                    rejectForm.setData(
+                                        'rejection_reason',
+                                        event.target.value,
+                                    )
+                                }
+                            />
+                            <InputError
+                                message={rejectForm.errors.rejection_reason}
+                            />
+                        </div>
+                    )}
                 </form>
             </div>
         </>
     );
 }
+
+BudgetPurchaseRequestEdit.layout = {
+    breadcrumbs: [{ title: 'Budget queue', href: index() }],
+};

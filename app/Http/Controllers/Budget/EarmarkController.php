@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Budget;
 
 use App\Concerns\FlashesToasts;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Budget\SaveEarmarkRequest;
 use App\Models\PurchaseRequest;
 use App\Notifications\PurchaseRequestStatusUpdated;
 use App\Services\EarmarkExportService;
@@ -46,23 +47,14 @@ class EarmarkController extends Controller
     }
 
     public function update(
-        Request $request,
+        SaveEarmarkRequest $request,
         PurchaseRequest $purchaseRequest,
         WorkflowRouter $workflowRouter,
         PurchaseRequestActivityLogger $activityLogger,
     ): RedirectResponse {
         abort_unless($purchaseRequest->status === 'budget_office_review', 403);
 
-        $validated = $request->validate([
-            'legal_basis' => ['required', 'string'],
-            'earmark_programs_activities' => ['required', 'string'],
-            'earmark_responsibility_center' => ['required', 'string'],
-            'earmark_date_to' => ['required', 'date'],
-            'earmark_object_expenditures' => ['nullable', 'array'],
-            'earmark_object_expenditures.*.description' => ['nullable', 'string'],
-            'earmark_object_expenditures.*.amount' => ['nullable', 'numeric'],
-            'current_step_notes' => ['nullable', 'string'],
-        ]);
+        $validated = $request->validated();
 
         $previousStatus = $purchaseRequest->status;
 
@@ -125,20 +117,13 @@ class EarmarkController extends Controller
     }
 
     public function amend(
-        Request $request,
+        SaveEarmarkRequest $request,
         PurchaseRequest $purchaseRequest,
         PurchaseRequestActivityLogger $activityLogger,
     ): RedirectResponse {
         abort_unless(filled($purchaseRequest->earmark_id), 403);
 
-        $validated = $request->validate([
-            'legal_basis' => ['required', 'string'],
-            'earmark_programs_activities' => ['required', 'string'],
-            'earmark_responsibility_center' => ['required', 'string'],
-            'earmark_date_to' => ['required', 'date'],
-            'earmark_object_expenditures' => ['nullable', 'array'],
-            'current_step_notes' => ['nullable', 'string'],
-        ]);
+        $validated = $request->validated();
 
         $purchaseRequest->fill($validated)->save();
 

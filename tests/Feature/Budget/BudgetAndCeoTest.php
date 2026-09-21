@@ -2,6 +2,7 @@
 
 use App\Models\Department;
 use App\Models\PurchaseRequest;
+use App\Models\PurchaseRequestActivity;
 use App\Models\User;
 use App\Models\WorkflowApproval;
 use Database\Seeders\RolePermissionSeeder;
@@ -88,6 +89,11 @@ test('earmark amend does not change workflow status', function () {
 
     expect($this->purchaseRequest->status)->toBe('ceo_approval')
         ->and($this->purchaseRequest->legal_basis)->toBe('Amended basis');
+
+    expect(PurchaseRequestActivity::query()
+        ->where('purchase_request_id', $this->purchaseRequest->id)
+        ->where('action', 'earmark_amended')
+        ->exists())->toBeTrue();
 });
 
 test('ceo approve sets bac_evaluation small_value_procurement and resolution number', function () {

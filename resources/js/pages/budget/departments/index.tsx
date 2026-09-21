@@ -1,8 +1,16 @@
 import { Head, useForm } from '@inertiajs/react';
+import {
+    createColumnHelper,
+    flexRender,
+    getCoreRowModel,
+    useReactTable,
+} from '@tanstack/react-table';
+import { useMemo, useState } from 'react';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { index, store, update } from '@/routes/budget';
 import type { Paginated } from '@/types';
 
 type Budget = {
@@ -11,6 +19,7 @@ type Budget = {
     allocated_budget: string;
     reserved_budget: string;
     utilized_budget: string;
+    notes: string | null;
     department?: { name: string } | null;
 };
 
@@ -22,7 +31,13 @@ type Props = {
     fiscalYear: number;
 };
 
-export default function BudgetDepartmentsIndex({ budgets, departments, fiscalYear }: Props) {
+const columnHelper = createColumnHelper<Budget>();
+
+export default function BudgetDepartmentsIndex({
+    budgets,
+    departments,
+    fiscalYear,
+}: Props) {
     const form = useForm({
         department_id: String(departments[0]?.id ?? ''),
         fiscal_year: String(fiscalYear),
@@ -30,11 +45,93 @@ export default function BudgetDepartmentsIndex({ budgets, departments, fiscalYea
         notes: '',
     });
 
+    const [edits, setEdits] = useState<
+        Record<number, { allocated_budget: string; notes: string }>
+    >({});
+
+    const columns = useMemo(
+        () => [
+            columnHelper.accessor((row) => row.department?.name ?? '', {
+                id: 'department',
+                header: 'Department',
+            }),
+            columnHelper.accessor('fiscal_year', { header: 'Year' }),
+            columnHelper.display({
+                id: 'allocated',
+                header: 'Allocated',
+                cell: (info) => {
+                    const budget = info.row.original;
+                    const value =
+                        edits[budget.id]?.allocated_budget ??
+                        budget.allocated_budget;
+
+                    return (
+                        <Input
+                            value={value}
+                            onChange={(event) =>
+                                setEdits((current) => ({
+                                    ...current,
+                                    [budget.id]: {
+                                        allocated_budget: event.target.value,
+                                        notes:
+                                            current[budget.id]?.notes ??
+                                            budget.notes ??
+                                            '',
+                                    },
+                                }))
+                            }
+                        />
+                    );
+                },
+            }),
+            columnHelper.accessor('reserved_budget', { header: 'Reserved' }),
+            columnHelper.accessor('utilized_budget', { header: 'Utilized' }),
+            columnHelper.display({
+                id: 'actions',
+                header: 'Actions',
+                cell: (info) => {
+                    const budget = info.row.original;
+                    const draft = edits[budget.id];
+
+                    return (
+                        <Button
+                            size="sm"
+                            type="button"
+                            disabled={!draft}
+                            onClick={() =>
+                                form
+                                    .transform(() => ({
+                                        allocated_budget: Number(
+                                            draft.allocated_budget,
+                                        ),
+                                        notes: draft.notes,
+                                    }))
+                                    .put(update.url(budget.id))
+                            }
+                        >
+                            Update
+                        </Button>
+                    );
+                },
+            }),
+        ],
+        [edits, form],
+    );
+
+    const table = useReactTable({
+        data: budgets.data,
+        columns,
+        getCoreRowModel: getCoreRowModel(),
+    });
+
     return (
         <>
             <Head title="Department budgets" />
             <div className="flex flex-1 flex-col gap-6 p-4">
-                <Heading title="Department budgets" description="Allocate fiscal-year budgets." />
+                <Heading
+                    title="Department budgets"
+                    description="Allocate fiscal-year budgets."
+                />
 
                 <form
                     className="grid max-w-3xl gap-3 rounded-lg border p-4 md:grid-cols-4"
@@ -45,7 +142,7 @@ export default function BudgetDepartmentsIndex({ budgets, departments, fiscalYea
                             department_id: Number(data.department_id),
                             fiscal_year: Number(data.fiscal_year),
                             allocated_budget: Number(data.allocated_budget),
-                        })).post('/budget/departments');
+                        })).post(store.url());
                     }}
                 >
                     <div className="space-y-2">
@@ -53,10 +150,15 @@ export default function BudgetDepartmentsIndex({ budgets, departments, fiscalYea
                         <select
                             className="border-input h-9 w-full rounded-md border px-3 text-sm"
                             value={form.data.department_id}
-                            onChange={(event) => form.setData('department_id', event.target.value)}
+                            onChange={(event) =>
+                                form.setData('department_id', event.target.value)
+                            }
                         >
                             {departments.map((department) => (
-                                <option key={department.id} value={department.id}>
+                                <option
+                                    key={department.id}
+                                    value={department.id}
+                                >
                                     {department.name}
                                 </option>
                             ))}
@@ -66,40 +168,60 @@ export default function BudgetDepartmentsIndex({ budgets, departments, fiscalYea
                         <Label>Year</Label>
                         <Input
                             value={form.data.fiscal_year}
-                            onChange={(event) => form.setData('fiscal_year', event.target.value)}
+                            onChange={(event) =>
+                                form.setData('fiscal_year', event.target.value)
+                            }
                         />
                     </div>
                     <div className="space-y-2">
                         <Label>Allocated</Label>
                         <Input
                             value={form.data.allocated_budget}
-                            onChange={(event) => form.setData('allocated_budget', event.target.value)}
+                            onChange={(event) =>
+                                form.setData(
+                                    'allocated_budget',
+                                    event.target.value,
+                                )
+                            }
                         />
                     </div>
                     <div className="flex items-end">
-                        <Button type="submit">Save</Button>
+                        <Button type="submit" disabled={form.processing}>
+                            Save
+                        </Button>
                     </div>
                 </form>
 
                 <div className="overflow-x-auto rounded-lg border">
                     <table className="w-full text-sm">
                         <thead className="bg-muted/50 text-left">
-                            <tr>
-                                <th className="px-3 py-2">Department</th>
-                                <th className="px-3 py-2">Year</th>
-                                <th className="px-3 py-2">Allocated</th>
-                                <th className="px-3 py-2">Reserved</th>
-                                <th className="px-3 py-2">Utilized</th>
-                            </tr>
+                            {table.getHeaderGroups().map((headerGroup) => (
+                                <tr key={headerGroup.id}>
+                                    {headerGroup.headers.map((header) => (
+                                        <th
+                                            key={header.id}
+                                            className="px-3 py-2 font-medium"
+                                        >
+                                            {flexRender(
+                                                header.column.columnDef.header,
+                                                header.getContext(),
+                                            )}
+                                        </th>
+                                    ))}
+                                </tr>
+                            ))}
                         </thead>
                         <tbody>
-                            {budgets.data.map((budget) => (
-                                <tr key={budget.id} className="border-t">
-                                    <td className="px-3 py-2">{budget.department?.name}</td>
-                                    <td className="px-3 py-2">{budget.fiscal_year}</td>
-                                    <td className="px-3 py-2">{budget.allocated_budget}</td>
-                                    <td className="px-3 py-2">{budget.reserved_budget}</td>
-                                    <td className="px-3 py-2">{budget.utilized_budget}</td>
+                            {table.getRowModel().rows.map((row) => (
+                                <tr key={row.id} className="border-t">
+                                    {row.getVisibleCells().map((cell) => (
+                                        <td key={cell.id} className="px-3 py-2">
+                                            {flexRender(
+                                                cell.column.columnDef.cell,
+                                                cell.getContext(),
+                                            )}
+                                        </td>
+                                    ))}
                                 </tr>
                             ))}
                         </tbody>
@@ -109,3 +231,7 @@ export default function BudgetDepartmentsIndex({ budgets, departments, fiscalYea
         </>
     );
 }
+
+BudgetDepartmentsIndex.layout = {
+    breadcrumbs: [{ title: 'Department budgets', href: index() }],
+};

@@ -107,6 +107,26 @@ test('creating a lot with two standalone items succeeds', function () {
         ->and($this->purchaseRequest->items()->whereNotNull('parent_lot_id')->count())->toBe(2);
 });
 
+test('destroying a lot detaches its children', function () {
+    $ids = $this->purchaseRequest->items()->pluck('id')->all();
+
+    $this->actingAs($this->supplyOfficer)
+        ->post(route('supply.purchase-requests.lots.store', $this->purchaseRequest), [
+            'lot_name' => 'Office lot',
+            'item_ids' => $ids,
+        ])
+        ->assertRedirect();
+
+    $lot = $this->purchaseRequest->items()->where('is_lot', true)->first();
+
+    $this->actingAs($this->supplyOfficer)
+        ->delete(route('supply.purchase-requests.lots.destroy', [$this->purchaseRequest, $lot]))
+        ->assertRedirect();
+
+    expect($this->purchaseRequest->items()->where('is_lot', true)->count())->toBe(0)
+        ->and($this->purchaseRequest->items()->whereNotNull('parent_lot_id')->count())->toBe(0);
+});
+
 test('replacement after return archives the original purchase request', function () {
     Notification::fake();
 

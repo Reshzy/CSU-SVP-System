@@ -1,5 +1,6 @@
 import { Head, Link } from '@inertiajs/react';
 import Heading from '@/components/heading';
+import { create, show } from '@/routes/bac/meetings';
 import type { Paginated } from '@/types';
 
 type Meeting = { id: number; title: string; status: string; meeting_datetime: string };
@@ -12,13 +13,13 @@ export default function BacMeetingsIndex({ meetings }: Props) {
             <Head title="BAC meetings" />
             <div className="flex flex-1 flex-col gap-6 p-4">
                 <Heading title="BAC meetings" description="Thin schedule of BAC meetings." />
-                <Link href="/bac/meetings/create" className="text-sm text-primary underline">
+                <Link href={create.url()} className="text-sm text-primary underline">
                     Schedule meeting
                 </Link>
                 <ul className="space-y-2 text-sm">
                     {meetings.data.map((meeting) => (
                         <li key={meeting.id} className="rounded-lg border p-3">
-                            <Link href={`/bac/meetings/${meeting.id}`} className="font-medium underline">
+                            <Link href={show.url(meeting.id)} className="font-medium underline">
                                 {meeting.title}
                             </Link>
                             <p className="text-muted-foreground">

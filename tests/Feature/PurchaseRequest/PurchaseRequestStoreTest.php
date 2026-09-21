@@ -134,6 +134,60 @@ test('creating a purchase request reserves department budget', function () {
     expect((float) $budget->reserved_budget)->toBe(100.0);
 });
 
+test('creating a purchase request with a lot header does not require a ppmp item on the lot row', function () {
+    $secondCatalog = AppItem::factory()->create([
+        'fiscal_year' => $this->fiscalYear,
+        'item_code' => 'BP-002',
+        'item_name' => 'Notebook',
+        'unit_price' => 40.00,
+    ]);
+
+    $quantities = [0, 0, 0, 0];
+    $quantities[$this->quarter - 1] = 20;
+
+    $secondPpmpItem = PpmpItem::factory()->for($this->ppmp)->create([
+        'app_item_id' => $secondCatalog->id,
+        'q1_quantity' => $quantities[0],
+        'q2_quantity' => $quantities[1],
+        'q3_quantity' => $quantities[2],
+        'q4_quantity' => $quantities[3],
+        'total_quantity' => 20,
+        'estimated_unit_cost' => 40.00,
+        'estimated_total_cost' => 800.00,
+    ]);
+
+    Notification::fake();
+
+    $this->actingAs($this->dean)->post(route('purchase-requests.store'), [
+        'pr_title' => 'Lot request',
+        'purpose' => 'Grouped supplies',
+        'date_needed' => now()->addWeek()->toDateString(),
+        'fund_cluster_code' => '01',
+        'items' => [
+            [
+                'is_lot' => true,
+                'lot_name' => 'Writing lot',
+            ],
+            [
+                'ppmp_item_id' => $this->ppmpItem->id,
+                'quantity_requested' => 2,
+                'parent_lot_index' => 0,
+            ],
+            [
+                'ppmp_item_id' => $secondPpmpItem->id,
+                'quantity_requested' => 2,
+                'parent_lot_index' => 0,
+            ],
+        ],
+    ])->assertRedirect();
+
+    $purchaseRequest = PurchaseRequest::query()->first();
+
+    expect($purchaseRequest)->not->toBeNull()
+        ->and($purchaseRequest->items()->where('is_lot', true)->count())->toBe(1)
+        ->and($purchaseRequest->items()->whereNotNull('parent_lot_id')->count())->toBe(2);
+});
+
 test('system admin cannot create purchase requests', function () {
     $admin = User::factory()->create(['department_id' => $this->department->id]);
     $admin->assignRole('System Admin');
