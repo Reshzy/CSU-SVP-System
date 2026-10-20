@@ -49,6 +49,14 @@ class Quotation extends Model
     }
 
     /**
+     * @return BelongsTo<PrItemGroup, $this>
+     */
+    public function itemGroup(): BelongsTo
+    {
+        return $this->belongsTo(PrItemGroup::class, 'pr_item_group_id');
+    }
+
+    /**
      * @return HasMany<QuotationItem, $this>
      */
     public function items(): HasMany

@@ -28,6 +28,14 @@ class AoqGeneration extends Model
         return $this->belongsTo(PurchaseRequest::class);
     }
 
+    /**
+     * @return BelongsTo<PrItemGroup, $this>
+     */
+    public function itemGroup(): BelongsTo
+    {
+        return $this->belongsTo(PrItemGroup::class, 'pr_item_group_id');
+    }
+
     protected function casts(): array
     {
         return [

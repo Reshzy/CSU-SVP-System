@@ -33,4 +33,30 @@ class PurchaseRequestActivityLogger
             'user_agent' => Request::userAgent(),
         ]);
     }
+
+    /**
+     * @param  list<array<string, mixed>>  $groupsInfo
+     */
+    public function logItemGroupsCreated(PurchaseRequest $purchaseRequest, array $groupsInfo): PurchaseRequestActivity
+    {
+        return $this->log(
+            $purchaseRequest,
+            'item_groups_created',
+            'Item groups created.',
+            newValue: ['groups' => $groupsInfo],
+        );
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $groupsInfo
+     */
+    public function logItemGroupsUpdated(PurchaseRequest $purchaseRequest, array $groupsInfo): PurchaseRequestActivity
+    {
+        return $this->log(
+            $purchaseRequest,
+            'item_groups_updated',
+            'Item groups updated.',
+            newValue: ['groups' => $groupsInfo],
+        );
+    }
 }

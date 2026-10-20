@@ -1,10 +1,10 @@
 import { Head, Link } from '@inertiajs/react';
+import { flexRender } from '@tanstack/react-table/flex-render';
 import {
-    createColumnHelper,
-    flexRender,
     getCoreRowModel,
-    useReactTable,
-} from '@tanstack/react-table';
+    legacyCreateColumnHelper,
+    useLegacyTable,
+} from '@tanstack/react-table/legacy';
 import { useMemo } from 'react';
 import Heading from '@/components/heading';
 import { index, manage } from '@/routes/bac/quotations';
@@ -19,7 +19,7 @@ type Row = {
 
 type Props = { purchaseRequests: Paginated<Row> };
 
-const columnHelper = createColumnHelper<Row>();
+const columnHelper = legacyCreateColumnHelper<Row>();
 
 export default function BacQuotationsIndex({ purchaseRequests }: Props) {
     const columns = useMemo(
@@ -50,7 +50,7 @@ export default function BacQuotationsIndex({ purchaseRequests }: Props) {
         [],
     );
 
-    const table = useReactTable({
+    const table = useLegacyTable({
         data: purchaseRequests.data,
         columns,
         getCoreRowModel: getCoreRowModel(),

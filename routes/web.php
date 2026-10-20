@@ -5,6 +5,7 @@ use App\Http\Controllers\AppConsolidationController;
 use App\Http\Controllers\AppItemController;
 use App\Http\Controllers\Auth\DepartmentRequestController;
 use App\Http\Controllers\Auth\DevLoginController;
+use App\Http\Controllers\Bac\ItemGroupController as BacItemGroupController;
 use App\Http\Controllers\Bac\MeetingController as BacMeetingController;
 use App\Http\Controllers\Bac\QuotationController as BacQuotationController;
 use App\Http\Controllers\Bac\SignatoryController as BacSignatoryController;
@@ -101,8 +102,22 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
         ->name('bac.app.index');
 
     Route::middleware('role:BAC Chair|BAC Members|BAC Secretariat')->prefix('bac')->name('bac.')->group(function () {
+        Route::get('item-groups/{purchaseRequest}/create', [BacItemGroupController::class, 'create'])->name('item-groups.create');
+        Route::post('item-groups/{purchaseRequest}', [BacItemGroupController::class, 'store'])->name('item-groups.store');
+        Route::get('item-groups/{purchaseRequest}/edit', [BacItemGroupController::class, 'edit'])->name('item-groups.edit');
+        Route::put('item-groups/{purchaseRequest}', [BacItemGroupController::class, 'update'])->name('item-groups.update');
+        Route::delete('item-groups/{purchaseRequest}', [BacItemGroupController::class, 'destroy'])->name('item-groups.destroy');
+
+        Route::post('item-groups/{itemGroup}/rfq/generate', [BacQuotationController::class, 'generateRfqForGroup'])->name('item-groups.rfq.generate');
+        Route::get('item-groups/{itemGroup}/rfq/download', [BacQuotationController::class, 'downloadRfqForGroup'])->name('item-groups.rfq.download');
+        Route::post('item-groups/{itemGroup}/rfq/regenerate', [BacQuotationController::class, 'regenerateRfqForGroup'])->name('item-groups.rfq.regenerate');
+
+        Route::post('item-groups/{itemGroup}/aoq/generate', [BacQuotationController::class, 'generateAoqForGroup'])->name('item-groups.aoq.generate');
+        Route::get('item-groups/{itemGroup}/aoq/download', [BacQuotationController::class, 'downloadAoqForGroup'])->name('item-groups.aoq.download');
+
         Route::get('quotations', [BacQuotationController::class, 'index'])->name('quotations.index');
         Route::get('quotations/{purchaseRequest}/manage', [BacQuotationController::class, 'manage'])->name('quotations.manage');
+        Route::get('quotations/{purchaseRequest}/groups/{itemGroup}/quotations', [BacQuotationController::class, 'groupQuotations'])->name('quotations.group-quotations')->scopeBindings();
         Route::post('quotations/{purchaseRequest}', [BacQuotationController::class, 'store'])->name('quotations.store');
         Route::post('quotations/{quotation}/evaluate', [BacQuotationController::class, 'evaluate'])->name('quotations.evaluate');
         Route::post('quotations/{purchaseRequest}/finalize', [BacQuotationController::class, 'finalize'])->name('quotations.finalize');
@@ -119,6 +134,14 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
         Route::get('quotations/{purchaseRequest}/aoq/download', [BacQuotationController::class, 'downloadAoq'])->name('quotations.aoq.download');
         Route::post('quotations/{purchaseRequest}/aoq/resolve-tie', [BacQuotationController::class, 'resolveTie'])->name('quotations.aoq.resolve-tie');
         Route::post('quotations/{purchaseRequest}/aoq/bac-override', [BacQuotationController::class, 'bacOverride'])->name('quotations.aoq.bac-override');
+        Route::post('quotations/{purchaseRequest}/aoq/consolidated', [BacQuotationController::class, 'generateConsolidatedAoq'])->name('quotations.aoq.consolidated');
+
+        Route::post('quotation-items/{quotationItem}/withdraw', [BacQuotationController::class, 'processWithdrawal'])->name('quotation-items.withdraw');
+        Route::get('quotation-items/{quotationItem}/withdrawal-preview', [BacQuotationController::class, 'withdrawalPreview'])->name('quotation-items.withdrawal-preview');
+        Route::get('quotations/{purchaseRequest}/withdrawal-history', [BacQuotationController::class, 'withdrawalHistory'])->name('quotations.withdrawal-history');
+
+        Route::post('pr-items/{prItem}/mark-failed', [BacQuotationController::class, 'markItemFailed'])->name('pr-items.mark-failed');
+        Route::post('quotations/{purchaseRequest}/create-replacement-pr', [BacQuotationController::class, 'createReplacementPr'])->name('quotations.create-replacement-pr');
 
         Route::get('meetings', [BacMeetingController::class, 'index'])->name('meetings.index');
         Route::get('meetings/create', [BacMeetingController::class, 'create'])->name('meetings.create');

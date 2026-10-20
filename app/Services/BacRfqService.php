@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Models\Document;
+use App\Models\PrItemGroup;
 use App\Models\PurchaseRequest;
+use App\Models\RfqGeneration;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\PhpWord;
@@ -74,5 +76,75 @@ class BacRfqService
         $this->activityLogger->log($purchaseRequest, 'rfq_generated', "RFQ {$purchaseRequest->rfq_number} generated.");
 
         return $document;
+    }
+
+    public function generateRfqForGroup(PrItemGroup $itemGroup): RfqGeneration
+    {
+        $purchaseRequest = $itemGroup->purchaseRequest;
+        abort_unless($purchaseRequest->hasBeenThroughBac(), 403);
+
+        $rfqNumber = RfqGeneration::generateNextRfqNumber();
+        $itemGroup->load(['items.lotChildren']);
+
+        $phpWord = new PhpWord;
+        $phpWord->setDefaultFontName('Century Gothic');
+        $phpWord->setDefaultFontSize(10);
+        $section = $phpWord->addSection();
+        $section->addText('REQUEST FOR QUOTATION', ['bold' => true], ['alignment' => Jc::CENTER]);
+        $section->addText("RFQ No. {$rfqNumber}");
+        $section->addText("PR No. {$purchaseRequest->pr_number}");
+        $section->addText("Group: {$itemGroup->group_code} {$itemGroup->group_name}");
+        $section->addTextBreak();
+
+        foreach ($itemGroup->items()->orderBy('id')->get() as $item) {
+            $indent = $item->parent_lot_id ? '    ' : '';
+            $label = $item->is_lot ? $item->lot_name : "{$item->item_code} {$item->item_name}";
+            $section->addText("{$indent}{$label} — qty {$item->quantity_requested} {$item->unit_of_measure}");
+
+            foreach ($item->lotChildren as $child) {
+                $section->addText("    {$child->item_code} {$child->item_name} — qty {$child->quantity_requested} {$child->unit_of_measure}");
+            }
+        }
+
+        $section->addTextBreak(2);
+        $section->addText('BAC Chairperson: ______________________');
+        $section->addText('Canvassing Officer: ______________________');
+
+        $relativePath = 'rfq/RFQ_'.$rfqNumber.'_'.$itemGroup->group_code.'_'.now()->format('Ymd_His').'.docx';
+        $absolutePath = Storage::disk('local')->path($relativePath);
+        $directory = dirname($absolutePath);
+
+        if (! is_dir($directory)) {
+            mkdir($directory, 0755, true);
+        }
+
+        IOFactory::createWriter($phpWord, 'Word2007')->save($absolutePath);
+
+        $existing = $itemGroup->rfqGeneration;
+
+        if ($existing !== null) {
+            if (filled($existing->file_path) && Storage::disk('local')->exists($existing->file_path)) {
+                Storage::disk('local')->delete($existing->file_path);
+            }
+
+            $existing->delete();
+        }
+
+        $generation = RfqGeneration::query()->create([
+            'pr_item_group_id' => $itemGroup->id,
+            'rfq_number' => $rfqNumber,
+            'generated_by' => auth()->id(),
+            'generated_at' => now(),
+            'file_path' => $relativePath,
+        ]);
+
+        $this->activityLogger->log(
+            $purchaseRequest,
+            'rfq_generated',
+            "RFQ {$rfqNumber} generated for {$itemGroup->group_code}.",
+            prItemGroupId: $itemGroup->id,
+        );
+
+        return $generation;
     }
 }

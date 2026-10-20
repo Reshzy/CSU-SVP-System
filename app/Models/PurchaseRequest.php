@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Database\Factories\PurchaseRequestFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -170,11 +171,27 @@ class PurchaseRequest extends Model
     }
 
     /**
+     * @return HasMany<PrItemGroup, $this>
+     */
+    public function itemGroups(): HasMany
+    {
+        return $this->hasMany(PrItemGroup::class);
+    }
+
+    /**
      * @return HasMany<Quotation, $this>
      */
     public function quotations(): HasMany
     {
         return $this->hasMany(Quotation::class);
+    }
+
+    /**
+     * @return HasMany<AoqGeneration, $this>
+     */
+    public function aoqGenerations(): HasMany
+    {
+        return $this->hasMany(AoqGeneration::class);
     }
 
     /**
@@ -278,9 +295,97 @@ class PurchaseRequest extends Model
             || filled($this->procurement_method);
     }
 
+    /**
+     * Minimum (earliest) group status mapped to a PR status. Null when ungrouped.
+     */
+    public function computeStatusFromGroups(): ?string
+    {
+        $groups = $this->itemGroups;
+
+        if ($groups->isEmpty()) {
+            return null;
+        }
+
+        $statusMap = [
+            'pending' => 'bac_evaluation',
+            'aoq_generated' => 'bac_approved',
+            'po_created' => 'partial_po_generation',
+            'all_po_approved' => 'po_approved',
+            'processing' => 'supplier_processing',
+            'delivered' => 'delivered',
+            'completed' => 'completed',
+        ];
+
+        $orderedKeys = array_keys($statusMap);
+        $minIndex = $groups
+            ->map(fn (PrItemGroup $group) => array_search($group->computeStatus(), $orderedKeys, true))
+            ->filter(fn (int|false $index): bool => $index !== false)
+            ->min();
+
+        $minGroupStatus = $orderedKeys[$minIndex] ?? 'pending';
+
+        return $statusMap[$minGroupStatus] ?? $this->status;
+    }
+
+    public function getEffectiveStatus(): string
+    {
+        return $this->computeStatusFromGroups() ?? $this->status;
+    }
+
+    public function syncStatusFromGroups(): void
+    {
+        $computed = $this->computeStatusFromGroups();
+
+        if ($computed === null || $this->status === $computed) {
+            return;
+        }
+
+        $this->status = $computed;
+        $this->status_updated_at = now();
+
+        if ($computed === 'completed') {
+            $this->completed_at = now();
+        }
+
+        $this->save();
+    }
+
+    public function canCreateAoq(): bool
+    {
+        $groups = $this->itemGroups;
+
+        if ($groups->isNotEmpty()) {
+            return $groups->contains(fn (PrItemGroup $group) => $group->canCreateAoq());
+        }
+
+        return $this->status === 'bac_evaluation';
+    }
+
     public function canCreatePo(): bool
     {
-        return in_array($this->status, ['bac_evaluation', 'bac_approved'], true);
+        $groups = $this->itemGroups;
+
+        if ($groups->isNotEmpty()) {
+            return $groups->contains(fn (PrItemGroup $group) => $group->canCreatePo());
+        }
+
+        return in_array($this->status, ['bac_approved', 'bac_evaluation'], true);
+    }
+
+    public function canManageGroups(): bool
+    {
+        return in_array($this->getEffectiveStatus(), ['bac_evaluation', 'partial_po_generation'], true);
+    }
+
+    public function groupsAreLocked(): bool
+    {
+        return $this->itemGroups()
+            ->where(function (Builder $query): void {
+                $query->whereHas('rfqGeneration')
+                    ->orWhereHas('quotations')
+                    ->orWhereHas('aoqGeneration');
+            })
+            ->exists();
     }
 
     public function statusLabel(): string

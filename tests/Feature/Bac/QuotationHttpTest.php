@@ -3,6 +3,7 @@
 use App\Models\AoqGeneration;
 use App\Models\AoqItemDecision;
 use App\Models\Department;
+use App\Models\PrItemGroup;
 use App\Models\PurchaseRequest;
 use App\Models\PurchaseRequestItem;
 use App\Models\Quotation;
@@ -93,6 +94,30 @@ test('unresolved ties block aoq generation over http', function () {
         ->assertSessionHasErrors('aoq');
 
     expect(AoqGeneration::query()->count())->toBe(0);
+});
+
+test('finalize is rejected when the purchase request has item groups', function () {
+    $group = PrItemGroup::factory()->for($this->purchaseRequest)->create([
+        'group_code' => 'G1',
+        'display_order' => 1,
+    ]);
+    $this->prItem->update(['pr_item_group_id' => $group->id]);
+
+    $quotation = Quotation::factory()->for($this->purchaseRequest)->for(Supplier::factory())->create([
+        'pr_item_group_id' => $group->id,
+        'bac_status' => 'pending_evaluation',
+    ]);
+
+    $this->actingAs($this->secretariat)
+        ->from(route('bac.quotations.manage', $this->purchaseRequest))
+        ->post(route('bac.quotations.finalize', $this->purchaseRequest), [
+            'quotation_id' => $quotation->id,
+        ])
+        ->assertRedirect(route('bac.quotations.manage', $this->purchaseRequest))
+        ->assertSessionHasErrors('quotation_id');
+
+    expect($this->purchaseRequest->fresh()->status)->toBe('bac_evaluation')
+        ->and($quotation->fresh()->is_winning_bid)->toBeFalse();
 });
 
 function quoteViaHttpSetup(PurchaseRequest $pr, PurchaseRequestItem $item, float $unitPrice): QuotationItem

@@ -1,10 +1,10 @@
 import { Head, useForm } from '@inertiajs/react';
+import { flexRender } from '@tanstack/react-table/flex-render';
 import {
-    createColumnHelper,
-    flexRender,
     getCoreRowModel,
-    useReactTable,
-} from '@tanstack/react-table';
+    legacyCreateColumnHelper,
+    useLegacyTable,
+} from '@tanstack/react-table/legacy';
 import { useMemo, useState } from 'react';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
@@ -31,7 +31,7 @@ type Props = {
     fiscalYear: number;
 };
 
-const columnHelper = createColumnHelper<Budget>();
+const columnHelper = legacyCreateColumnHelper<Budget>();
 
 export default function BudgetDepartmentsIndex({
     budgets,
@@ -118,7 +118,7 @@ export default function BudgetDepartmentsIndex({
         [edits, form],
     );
 
-    const table = useReactTable({
+    const table = useLegacyTable({
         data: budgets.data,
         columns,
         getCoreRowModel: getCoreRowModel(),

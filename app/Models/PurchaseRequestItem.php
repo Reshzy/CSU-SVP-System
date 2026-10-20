@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Database\Factories\PurchaseRequestItemFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -77,6 +79,14 @@ class PurchaseRequestItem extends Model
     }
 
     /**
+     * @return BelongsTo<PrItemGroup, $this>
+     */
+    public function itemGroup(): BelongsTo
+    {
+        return $this->belongsTo(PrItemGroup::class, 'pr_item_group_id');
+    }
+
+    /**
      * @return BelongsTo<PpmpItem, $this>
      */
     public function ppmpItem(): BelongsTo
@@ -106,6 +116,63 @@ class PurchaseRequestItem extends Model
     public function quotationItems(): HasMany
     {
         return $this->hasMany(QuotationItem::class);
+    }
+
+    /**
+     * @param  Builder<$this>  $query
+     */
+    #[Scope]
+    protected function quotable(Builder $query): void
+    {
+        $query->whereNull('parent_lot_id');
+    }
+
+    /**
+     * @param  Builder<$this>  $query
+     */
+    #[Scope]
+    protected function needsRePr(Builder $query): void
+    {
+        $query->where('procurement_status', 'failed')->whereNull('replacement_pr_id');
+    }
+
+    public function isLotHeader(): bool
+    {
+        return $this->is_lot && $this->parent_lot_id === null;
+    }
+
+    public function isLotChild(): bool
+    {
+        return $this->parent_lot_id !== null;
+    }
+
+    public function markAsFailed(string $reason): bool
+    {
+        $this->update([
+            'procurement_status' => 'failed',
+            'failed_at' => now(),
+            'failure_reason' => $reason,
+        ]);
+
+        if ($this->isLotHeader()) {
+            $this->lotChildren()->update([
+                'procurement_status' => 'failed',
+                'failed_at' => now(),
+                'failure_reason' => $reason,
+            ]);
+        }
+
+        return true;
+    }
+
+    public function linkToReplacementPr(PurchaseRequest $replacementPr): bool
+    {
+        $this->update([
+            'procurement_status' => 're_pr_created',
+            'replacement_pr_id' => $replacementPr->id,
+        ]);
+
+        return true;
     }
 
     protected function casts(): array

@@ -5,9 +5,14 @@ import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import {
+    download as downloadGroupAoq,
+    generate as generateGroupAoq,
+} from '@/routes/bac/item-groups/aoq';
 import { index, manage } from '@/routes/bac/quotations';
 import {
     bacOverride,
+    consolidated,
     download as downloadAoq,
     generate as generateAoq,
     resolveTie,
@@ -33,27 +38,49 @@ type QuotableItem = {
     quotation_items: QuotationItem[];
 };
 
+type ItemGroup = {
+    id: number;
+    group_code: string;
+    group_name: string;
+};
+
+type GroupAoqState = {
+    unresolved_ties: number[];
+    can_create_aoq: boolean;
+    can_regenerate_aoq: boolean;
+    latest_aoq: { aoq_reference_number: string } | null;
+};
+
 type Props = {
     purchaseRequest: {
         id: number;
         pr_number: string | null;
         quotable_items: QuotableItem[];
+        item_groups: ItemGroup[];
     };
     unresolvedTies: number[];
     latestAoq: { aoq_reference_number: string } | null;
+    groupAoq: Record<string, GroupAoqState>;
 };
 
 export default function BacAoqPage({
     purchaseRequest,
     unresolvedTies,
     latestAoq,
+    groupAoq = {},
 }: Props) {
+    const groups = purchaseRequest.item_groups ?? [];
+    const hasGroups = groups.length > 0;
+    const groupedTieIds = hasGroups
+        ? Object.values(groupAoq).flatMap((group) => group.unresolved_ties)
+        : unresolvedTies;
+
     const tiedItems = useMemo(
         () =>
             purchaseRequest.quotable_items.filter((item) =>
-                unresolvedTies.includes(item.id),
+                groupedTieIds.includes(item.id),
             ),
-        [purchaseRequest.quotable_items, unresolvedTies],
+        [purchaseRequest.quotable_items, groupedTieIds],
     );
 
     const resolveForm = useForm({
@@ -98,6 +125,74 @@ export default function BacAoqPage({
                         Back to quotations
                     </Link>
                 </Button>
+
+                {hasGroups && (
+                    <div className="space-y-3 rounded-lg border p-4">
+                        <h2 className="font-medium">Per-group AOQ</h2>
+                        {groups.map((group) => {
+                            const state = groupAoq[String(group.id)];
+                            const canGenerate = state?.can_create_aoq ?? true;
+                            const canRegenerate =
+                                state?.can_regenerate_aoq ?? false;
+
+                            return (
+                                <div
+                                    key={group.id}
+                                    className="flex flex-wrap items-center gap-2"
+                                >
+                                    <span className="text-sm font-medium">
+                                        {group.group_code} {group.group_name}
+                                    </span>
+                                    {(canGenerate || canRegenerate) && (
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            onClick={() =>
+                                                router.post(
+                                                    generateGroupAoq.url(
+                                                        group.id,
+                                                    ),
+                                                )
+                                            }
+                                        >
+                                            {canRegenerate
+                                                ? 'Regenerate AOQ'
+                                                : 'Generate AOQ'}
+                                        </Button>
+                                    )}
+                                    {state?.latest_aoq && (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            asChild
+                                        >
+                                            <a
+                                                href={downloadGroupAoq.url(
+                                                    group.id,
+                                                )}
+                                            >
+                                                Download{' '}
+                                                {
+                                                    state.latest_aoq
+                                                        .aoq_reference_number
+                                                }
+                                            </a>
+                                        </Button>
+                                    )}
+                                </div>
+                            );
+                        })}
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() =>
+                                router.post(consolidated.url(purchaseRequest.id))
+                            }
+                        >
+                            Generate consolidated AOQ
+                        </Button>
+                    </div>
+                )}
 
                 {tiedItems.length > 0 ? (
                     <form
@@ -209,13 +304,15 @@ export default function BacAoqPage({
                         </Button>
                     </form>
                 ) : (
-                    <Button
-                        onClick={() =>
-                            router.post(generateAoq.url(purchaseRequest.id))
-                        }
-                    >
-                        Generate AOQ
-                    </Button>
+                    !hasGroups && (
+                        <Button
+                            onClick={() =>
+                                router.post(generateAoq.url(purchaseRequest.id))
+                            }
+                        >
+                            Generate AOQ
+                        </Button>
+                    )
                 )}
 
                 <form
