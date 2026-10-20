@@ -147,6 +147,7 @@ export default function BacAoqPage({
                                         <Button
                                             type="button"
                                             size="sm"
+                                            data-testid={`generate-aoq-${group.group_code}`}
                                             onClick={() =>
                                                 router.post(
                                                     generateGroupAoq.url(
@@ -199,17 +200,16 @@ export default function BacAoqPage({
                         className="grid max-w-2xl gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4"
                         onSubmit={(event) => {
                             event.preventDefault();
-                            resolveForm
-                                .transform((data) => ({
-                                    purchase_request_item_id: Number(
-                                        data.purchase_request_item_id,
-                                    ),
-                                    winning_quotation_item_id: Number(
-                                        data.winning_quotation_item_id,
-                                    ),
-                                    justification: data.justification,
-                                }))
-                                .post(resolveTie.url(purchaseRequest.id));
+                            resolveForm.transform((data) => ({
+                                purchase_request_item_id: Number(
+                                    data.purchase_request_item_id,
+                                ),
+                                winning_quotation_item_id: Number(
+                                    data.winning_quotation_item_id,
+                                ),
+                                justification: data.justification,
+                            }));
+                            resolveForm.post(resolveTie.url(purchaseRequest.id));
                         }}
                     >
                         <p className="text-sm">
@@ -319,17 +319,16 @@ export default function BacAoqPage({
                     className="grid max-w-2xl gap-3 rounded-lg border p-4"
                     onSubmit={(event) => {
                         event.preventDefault();
-                        overrideForm
-                            .transform((data) => ({
-                                purchase_request_item_id: Number(
-                                    data.purchase_request_item_id,
-                                ),
-                                winning_quotation_item_id: Number(
-                                    data.winning_quotation_item_id,
-                                ),
-                                justification: data.justification,
-                            }))
-                            .post(bacOverride.url(purchaseRequest.id));
+                        overrideForm.transform((data) => ({
+                            purchase_request_item_id: Number(
+                                data.purchase_request_item_id,
+                            ),
+                            winning_quotation_item_id: Number(
+                                data.winning_quotation_item_id,
+                            ),
+                            justification: data.justification,
+                        }));
+                        overrideForm.post(bacOverride.url(purchaseRequest.id));
                     }}
                 >
                     <h2 className="font-medium">BAC override</h2>

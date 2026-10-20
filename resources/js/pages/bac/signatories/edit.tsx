@@ -35,7 +35,8 @@ export default function BacSignatoriesEdit({ signatory, users }: Props) {
                     className="max-w-xl space-y-4"
                     onSubmit={(event) => {
                         event.preventDefault();
-                        form.transform((data) => ({ ...data, user_id: Number(data.user_id) })).put(update.url(signatory.id));
+                        form.transform((data) => ({ ...data, user_id: Number(data.user_id) }));
+                        form.put(update.url(signatory.id));
                     }}
                 >
                     <div className="space-y-2">

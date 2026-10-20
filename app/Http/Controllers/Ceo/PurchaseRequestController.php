@@ -36,7 +36,7 @@ class PurchaseRequestController extends Controller
     {
         abort_unless($purchaseRequest->status === 'ceo_approval' || filled($purchaseRequest->resolution_number), 403);
 
-        $purchaseRequest->load(['department', 'requester', 'items', 'documents']);
+        $purchaseRequest->load(['department', 'requester', 'items', 'documents', 'activities.user:id,name']);
 
         return Inertia::render('ceo/purchase-requests/show', [
             'purchaseRequest' => $purchaseRequest,

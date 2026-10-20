@@ -1,5 +1,6 @@
 import { Head, Link, useForm } from '@inertiajs/react';
 import Heading from '@/components/heading';
+import { PrTimeline, type TimelineActivity } from '@/components/pr-timeline';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { index, show, update } from '@/routes/ceo/purchase-requests';
@@ -60,6 +61,7 @@ type ShowProps = {
         pr_title: string | null;
         purpose: string | null;
         earmark_id: string | null;
+        activities?: TimelineActivity[];
     };
     statusLabel: string;
 };
@@ -104,6 +106,10 @@ export default function CeoPurchaseRequestShow({ purchaseRequest, statusLabel }:
                         Submit decision
                     </Button>
                 </form>
+                <div className="space-y-3">
+                    <h2 className="text-base font-medium">Activity timeline</h2>
+                    <PrTimeline activities={purchaseRequest.activities ?? []} />
+                </div>
             </div>
         </>
     );

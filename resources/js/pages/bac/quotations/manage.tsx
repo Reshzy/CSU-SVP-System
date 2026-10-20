@@ -345,22 +345,21 @@ export default function BacQuotationsManage({
                     className="space-y-4 rounded-lg border p-4"
                     onSubmit={(event) => {
                         event.preventDefault();
-                        storeForm
-                            .transform((data) => ({
-                                supplier_id: Number(data.supplier_id),
-                                pr_item_group_id: hasGroups
-                                    ? Number(selectedGroupId)
-                                    : null,
-                                items: data.items.map((item) => ({
-                                    purchase_request_item_id:
-                                        item.purchase_request_item_id,
-                                    unit_price:
-                                        item.unit_price === ''
-                                            ? null
-                                            : Number(item.unit_price),
-                                })),
-                            }))
-                            .post(store.url(purchaseRequest.id));
+                        storeForm.transform((data) => ({
+                            supplier_id: Number(data.supplier_id),
+                            pr_item_group_id: hasGroups
+                                ? Number(selectedGroupId)
+                                : null,
+                            items: data.items.map((item) => ({
+                                purchase_request_item_id:
+                                    item.purchase_request_item_id,
+                                unit_price:
+                                    item.unit_price === ''
+                                        ? null
+                                        : Number(item.unit_price),
+                            })),
+                        }));
+                        storeForm.post(store.url(purchaseRequest.id));
                     }}
                 >
                     <h2 className="font-medium">Store quotation</h2>

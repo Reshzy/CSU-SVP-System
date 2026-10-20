@@ -1,6 +1,8 @@
 import { Head } from '@inertiajs/react';
 import Heading from '@/components/heading';
-import { index } from '@/routes/purchase-requests';
+import { PrTimeline, type TimelineActivity } from '@/components/pr-timeline';
+import { Button } from '@/components/ui/button';
+import { exportMethod, index } from '@/routes/purchase-requests';
 
 type Item = {
     id: number;
@@ -15,14 +17,6 @@ type Item = {
     parent_lot_id: number | null;
 };
 
-type Activity = {
-    id: number;
-    action: string;
-    description: string | null;
-    created_at: string;
-    user?: { name: string } | null;
-};
-
 type PurchaseRequest = {
     id: number;
     pr_number: string | null;
@@ -35,7 +29,7 @@ type PurchaseRequest = {
     department?: { name: string } | null;
     requester?: { name: string; email: string } | null;
     items: Item[];
-    activities: Activity[];
+    activities: TimelineActivity[];
 };
 
 type Props = {
@@ -49,16 +43,23 @@ export default function PurchaseRequestShow({ purchaseRequest, statusLabel }: Pr
             <Head title={purchaseRequest.pr_number ?? 'Purchase request'} />
 
             <div className="flex flex-1 flex-col gap-6 p-4">
-                <Heading
-                    title={purchaseRequest.pr_number ?? `PR #${purchaseRequest.id}`}
-                    description={purchaseRequest.pr_title ?? 'Purchase request detail'}
-                />
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <Heading
+                        title={purchaseRequest.pr_number ?? `PR #${purchaseRequest.id}`}
+                        description={purchaseRequest.pr_title ?? 'Purchase request detail'}
+                    />
+                    <Button variant="outline" asChild>
+                        <a href={exportMethod.url(purchaseRequest.id)}>Export Excel</a>
+                    </Button>
+                </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
                     <div className="rounded-lg border p-4 text-sm">
                         <p>
                             <span className="text-muted-foreground">Status:</span>{' '}
-                            <span className="capitalize">{statusLabel}</span>
+                            <span className="capitalize" data-testid="pr-status">
+                                {statusLabel}
+                            </span>
                         </p>
                         <p>
                             <span className="text-muted-foreground">Department:</span>{' '}
@@ -125,18 +126,8 @@ export default function PurchaseRequestShow({ purchaseRequest, statusLabel }: Pr
                 </div>
 
                 <div className="space-y-3">
-                    <h2 className="text-base font-medium">Activity</h2>
-                    <ul className="space-y-2 text-sm">
-                        {purchaseRequest.activities.map((activity) => (
-                            <li key={activity.id} className="rounded-lg border p-3">
-                                <p className="font-medium capitalize">{activity.action.replaceAll('_', ' ')}</p>
-                                <p className="text-muted-foreground">{activity.description}</p>
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                    {activity.user?.name} · {new Date(activity.created_at).toLocaleString()}
-                                </p>
-                            </li>
-                        ))}
-                    </ul>
+                    <h2 className="text-base font-medium">Activity timeline</h2>
+                    <PrTimeline activities={purchaseRequest.activities} />
                 </div>
             </div>
         </>

@@ -27,7 +27,8 @@ export default function BacSignatoriesCreate({ users }: Props) {
                     className="max-w-xl space-y-4"
                     onSubmit={(event) => {
                         event.preventDefault();
-                        form.transform((data) => ({ ...data, user_id: Number(data.user_id) })).post(store.url());
+                        form.transform((data) => ({ ...data, user_id: Number(data.user_id) }));
+                        form.post(store.url());
                     }}
                 >
                     <div className="space-y-2">

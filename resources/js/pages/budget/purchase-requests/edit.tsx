@@ -115,8 +115,9 @@ export default function BudgetPurchaseRequestEdit({
                     }}
                 >
                     <div className="space-y-2">
-                        <Label>Legal basis</Label>
+                        <Label htmlFor="legal_basis">Legal basis</Label>
                         <Input
+                            id="legal_basis"
                             value={form.data.legal_basis}
                             onChange={(event) =>
                                 form.setData('legal_basis', event.target.value)
@@ -126,8 +127,11 @@ export default function BudgetPurchaseRequestEdit({
                         <InputError message={form.errors.legal_basis} />
                     </div>
                     <div className="space-y-2">
-                        <Label>Programs / activities</Label>
+                        <Label htmlFor="earmark_programs_activities">
+                            Programs / activities
+                        </Label>
                         <Textarea
+                            id="earmark_programs_activities"
                             value={form.data.earmark_programs_activities}
                             onChange={(event) =>
                                 form.setData(
@@ -144,8 +148,11 @@ export default function BudgetPurchaseRequestEdit({
                         />
                     </div>
                     <div className="space-y-2">
-                        <Label>Responsibility center</Label>
+                        <Label htmlFor="earmark_responsibility_center">
+                            Responsibility center
+                        </Label>
                         <Input
+                            id="earmark_responsibility_center"
                             value={form.data.earmark_responsibility_center}
                             onChange={(event) =>
                                 form.setData(
@@ -164,8 +171,9 @@ export default function BudgetPurchaseRequestEdit({
                         />
                     </div>
                     <div className="space-y-2">
-                        <Label>Earmark date to</Label>
+                        <Label htmlFor="earmark_date_to">Earmark date to</Label>
                         <Input
+                            id="earmark_date_to"
                             type="date"
                             value={form.data.earmark_date_to}
                             onChange={(event) =>

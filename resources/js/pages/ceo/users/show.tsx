@@ -16,7 +16,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
-import { approve, idProof, index, reject } from '@/routes/ceo/users';
+import { approve, index, reject } from '@/routes/ceo/users';
+import { show as showFile } from '@/routes/files';
 import type { SvpRole, User } from '@/types';
 
 type IdProofFile = {
@@ -161,7 +162,7 @@ export default function CeoUsersShow({
                             {idProofs.map((proof) => (
                                 <a
                                     key={proof.id}
-                                    href={idProof([user.id, proof.id]).url}
+                                    href={showFile(proof.id).url}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="hover:bg-accent flex items-center gap-3 rounded-lg border p-3 text-sm"

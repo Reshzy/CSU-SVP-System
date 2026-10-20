@@ -17,14 +17,17 @@ use App\Http\Controllers\Ceo\DepartmentRequestController as CeoDepartmentRequest
 use App\Http\Controllers\Ceo\PurchaseRequestController as CeoPurchaseRequestController;
 use App\Http\Controllers\Ceo\UserIdProofController;
 use App\Http\Controllers\Ceo\UserManagementController;
+use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\PpmpController;
 use App\Http\Controllers\PurchaseRequestController;
 use App\Http\Controllers\PurchaseRequestReplacementController;
+use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\Supply\InventoryReceiptController;
 use App\Http\Controllers\Supply\PoSignatoryController;
 use App\Http\Controllers\Supply\PurchaseOrderController;
 use App\Http\Controllers\Supply\PurchaseRequestController as SupplyPurchaseRequestController;
+use App\Http\Controllers\Supply\SupplierController;
 use Illuminate\Foundation\Http\Middleware\HandlePrecognitiveRequests;
 use Illuminate\Support\Facades\Route;
 
@@ -55,6 +58,7 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
             ->middleware(HandlePrecognitiveRequests::class)
             ->name('store');
         Route::get('{purchaseRequest}', [PurchaseRequestController::class, 'show'])->name('show');
+        Route::get('{purchaseRequest}/export', [PurchaseRequestController::class, 'export'])->name('export');
         Route::get('{purchaseRequest}/replacement/create', [PurchaseRequestReplacementController::class, 'create'])
             ->name('replacement.create');
         Route::post('{purchaseRequest}/replacement', [PurchaseRequestReplacementController::class, 'store'])
@@ -121,6 +125,31 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
         Route::get('vouchers/{voucher}', [DisbursementVoucherController::class, 'show'])->name('vouchers.show');
         Route::put('vouchers/{voucher}', [DisbursementVoucherController::class, 'update'])->name('vouchers.update');
     });
+
+    Route::get('files/{document}', [DocumentController::class, 'show'])->name('files.show');
+
+    Route::middleware('can:view-reports')->prefix('reports')->name('reports.')->group(function () {
+        Route::get('pr', [ReportsController::class, 'pr'])->name('pr');
+        Route::get('pr/export', [ReportsController::class, 'prExport'])->name('pr.export');
+        Route::get('analytics', [ReportsController::class, 'analytics'])->name('analytics');
+        Route::get('suppliers', [ReportsController::class, 'suppliers'])->name('suppliers');
+        Route::get('suppliers/export', [ReportsController::class, 'suppliersExport'])->name('suppliers.export');
+        Route::get('budget', [ReportsController::class, 'budget'])->name('budget');
+        Route::get('budget/export', [ReportsController::class, 'budgetExport'])->name('budget.export');
+        Route::get('custom', [ReportsController::class, 'custom'])->name('custom');
+        Route::get('custom/export', [ReportsController::class, 'customExport'])->name('custom.export');
+    });
+
+    Route::middleware('can:manage-suppliers')->prefix('supply')->name('supply.')->group(function () {
+        Route::get('suppliers', [SupplierController::class, 'index'])->name('suppliers.index');
+        Route::get('suppliers/create', [SupplierController::class, 'create'])->name('suppliers.create');
+        Route::post('suppliers', [SupplierController::class, 'store'])->name('suppliers.store');
+        Route::get('suppliers/{supplier}/edit', [SupplierController::class, 'edit'])->name('suppliers.edit');
+        Route::put('suppliers/{supplier}', [SupplierController::class, 'update'])->name('suppliers.update');
+    });
+
+    Route::middleware('role:Executive Officer')->post('supply/suppliers/{supplier}/approve', [SupplierController::class, 'approve'])
+        ->name('supply.suppliers.approve');
 
     Route::get('api/budget/check', [BudgetCheckController::class, 'check'])->name('api.budget.check');
     Route::post('api/budget/validate', [BudgetCheckController::class, 'validateAmount'])->name('api.budget.validate');

@@ -13,7 +13,7 @@ class SupplierFactory extends Factory
     public function definition(): array
     {
         return [
-            'supplier_code' => 'SUP-'.fake()->unique()->numerify('####'),
+            'supplier_code' => 'SUP-'.now()->year.'-'.fake()->unique()->numerify('####'),
             'business_name' => fake()->company(),
             'business_type' => 'corporation',
             'contact_person' => fake()->name(),

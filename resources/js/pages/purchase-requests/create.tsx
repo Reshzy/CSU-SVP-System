@@ -197,7 +197,8 @@ export default function PurchaseRequestCreate({
                                 return;
                             }
 
-                            form.transform(() => payload).post(store.url());
+                            form.transform(() => payload);
+                            form.post(store.url());
                         }}
                         className="flex max-w-4xl flex-col gap-6"
                     >
@@ -349,7 +350,7 @@ export default function PurchaseRequestCreate({
                                                         })
                                                     }
                                                 >
-                                                    <SelectTrigger>
+                                                    <SelectTrigger data-testid="ppmp-item-select">
                                                         <SelectValue placeholder="Select item" />
                                                     </SelectTrigger>
                                                     <SelectContent>
@@ -499,7 +500,11 @@ export default function PurchaseRequestCreate({
                                     })}
                                 </span>
                             </p>
-                            <Button type="submit" disabled={form.processing}>
+                            <Button
+                                type="submit"
+                                disabled={form.processing}
+                                data-testid="submit-purchase-request"
+                            >
                                 Submit to Supply
                             </Button>
                         </div>

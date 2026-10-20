@@ -98,16 +98,15 @@ export default function BudgetDepartmentsIndex({
                             size="sm"
                             type="button"
                             disabled={!draft}
-                            onClick={() =>
-                                form
-                                    .transform(() => ({
-                                        allocated_budget: Number(
-                                            draft.allocated_budget,
-                                        ),
-                                        notes: draft.notes,
-                                    }))
-                                    .put(update.url(budget.id))
-                            }
+                            onClick={() => {
+                                form.transform(() => ({
+                                    allocated_budget: Number(
+                                        draft.allocated_budget,
+                                    ),
+                                    notes: draft.notes,
+                                }));
+                                form.put(update.url(budget.id));
+                            }}
                         >
                             Update
                         </Button>
@@ -142,7 +141,8 @@ export default function BudgetDepartmentsIndex({
                             department_id: Number(data.department_id),
                             fiscal_year: Number(data.fiscal_year),
                             allocated_budget: Number(data.allocated_budget),
-                        })).post(store.url());
+                        }));
+                        form.post(store.url());
                     }}
                 >
                     <div className="space-y-2">

@@ -30,7 +30,8 @@ export default function SupplyPoSignatoriesCreate({ users }: Props) {
                         form.transform((data) => ({
                             ...data,
                             user_id: data.user_id === '' ? null : Number(data.user_id),
-                        })).post(store.url());
+                        }));
+                        form.post(store.url());
                     }}
                 >
                     <div className="space-y-2">

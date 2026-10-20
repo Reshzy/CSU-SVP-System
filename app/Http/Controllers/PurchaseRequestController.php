@@ -13,6 +13,7 @@ use App\Models\PurchaseRequestItem;
 use App\Models\User;
 use App\Notifications\PurchaseRequestSubmitted;
 use App\Services\PpmpQuarterlyTracker;
+use App\Services\PurchaseRequestExportService;
 use App\Support\ListQuery;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,6 +22,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Notification;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class PurchaseRequestController extends Controller
 {
@@ -269,6 +271,19 @@ class PurchaseRequestController extends Controller
             'purchaseRequest' => $purchaseRequest,
             'statusLabel' => $purchaseRequest->statusLabel(),
         ]);
+    }
+
+    public function export(PurchaseRequest $purchaseRequest, PurchaseRequestExportService $exportService): BinaryFileResponse|RedirectResponse
+    {
+        Gate::authorize('view', $purchaseRequest);
+
+        try {
+            return $exportService->download($purchaseRequest);
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return back()->withErrors(['export' => 'Unable to export this purchase request.']);
+        }
     }
 
     /**

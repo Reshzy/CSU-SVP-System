@@ -1,6 +1,7 @@
 import { Head, router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import Heading from '@/components/heading';
+import { PrTimeline, type TimelineActivity } from '@/components/pr-timeline';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,6 +36,7 @@ type PurchaseRequest = {
     purpose: string | null;
     status: string;
     items: Item[];
+    activities: TimelineActivity[];
 };
 
 type Props = {
@@ -342,6 +344,11 @@ export default function SupplyPurchaseRequestShow({
                         Export Excel
                     </a>
                 </Button>
+
+                <div className="space-y-3">
+                    <h2 className="text-base font-medium">Activity timeline</h2>
+                    <PrTimeline activities={purchaseRequest.activities ?? []} />
+                </div>
             </div>
         </>
     );

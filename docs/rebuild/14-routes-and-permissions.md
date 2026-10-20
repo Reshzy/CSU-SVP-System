@@ -124,6 +124,22 @@ Meetings: `bac.meetings.index/create/store/show`
 
 ---
 
+## Rebuild mapping
+
+Incumbent names that are not aliased 1:1. `tests/Feature/NamedRoutesTest.php` asserts the rebuild names.
+
+| Incumbent | Rebuild |
+|-----------|---------|
+| Unnamed `GET /` | `home` |
+| `budget.edit` / `budget.show` | Inline table on `budget.index` (`budget.store` / `budget.update`) |
+| `budget.purchase-requests.amend` | `budget.purchase-requests.amend-earmark` |
+| POST `login` / `register` | Fortify `login.store` / `register.store` |
+| POST password reset `password.store` | Fortify `password.update` |
+
+Kept extra: `ceo.users.id-proof` (Slice 1 stand-in). Canonical download is `files.show`; CEO ID-proof links use `files.show`. The old route remains so existing tests still pass.
+
+Unwired file-15 URLs stay 404: `/suppliers/register`, quotations submit, po-status, contact.
+
 ## Acceptance criteria
 
 - [ ] Named routes above exist (or a documented mapping table if Inertia paths differ).

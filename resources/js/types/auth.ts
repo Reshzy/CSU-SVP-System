@@ -63,6 +63,10 @@ export type Auth = {
     /** Nav and dashboard hints only; authorization lives on the server. */
     roles: SvpRole[];
     primaryRole: SvpRole | null;
+    can?: {
+        viewReports: boolean;
+        manageSuppliers: boolean;
+    };
 };
 
 export type Passkey = {

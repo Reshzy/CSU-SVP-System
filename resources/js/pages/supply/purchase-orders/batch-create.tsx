@@ -30,6 +30,13 @@ type Props = {
     defaultTerms: string;
 };
 
+function defaultDeliveryDate(): string {
+    const date = new Date();
+    date.setDate(date.getDate() + 7);
+
+    return date.toISOString().slice(0, 10);
+}
+
 export default function SupplyPurchaseOrdersBatchCreate({
     purchaseRequest,
     itemGroup,
@@ -49,7 +56,7 @@ export default function SupplyPurchaseOrdersBatchCreate({
             ors_burs_date: '',
             total_amount: String(winner.total_amount),
             delivery_address: winner.supplier.address ?? '',
-            delivery_date_required: '',
+            delivery_date_required: defaultDeliveryDate(),
             terms_and_conditions: defaultTerms,
             special_instructions: '',
             items: winner.items.map((item) => ({
@@ -61,6 +68,19 @@ export default function SupplyPurchaseOrdersBatchCreate({
             })),
         })),
     });
+
+    function updateOrder(
+        index: number,
+        field: 'delivery_address' | 'delivery_date_required' | 'terms_and_conditions',
+        value: string,
+    ): void {
+        form.setData(
+            'purchase_orders',
+            form.data.purchase_orders.map((order, orderIndex) =>
+                orderIndex === index ? { ...order, [field]: value } : order,
+            ),
+        );
+    }
 
     return (
         <>
@@ -85,37 +105,57 @@ export default function SupplyPurchaseOrdersBatchCreate({
                                 ))}
                             </ul>
                             <div className="space-y-2">
-                                <Label>Delivery address</Label>
+                                <Label htmlFor={`delivery-address-${index}`}>
+                                    Delivery address
+                                </Label>
                                 <Textarea
+                                    id={`delivery-address-${index}`}
                                     value={form.data.purchase_orders[index].delivery_address}
                                     onChange={(event) =>
-                                        form.setData(
-                                            `purchase_orders.${index}.delivery_address`,
+                                        updateOrder(
+                                            index,
+                                            'delivery_address',
                                             event.target.value,
                                         )
                                     }
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label>Delivery date required</Label>
+                                <Label htmlFor={`delivery-date-${index}`}>
+                                    Delivery date required
+                                </Label>
                                 <Input
+                                    id={`delivery-date-${index}`}
                                     type="date"
+                                    data-testid={`delivery-date-${index}`}
                                     value={form.data.purchase_orders[index].delivery_date_required}
                                     onChange={(event) =>
-                                        form.setData(
-                                            `purchase_orders.${index}.delivery_date_required`,
+                                        updateOrder(
+                                            index,
+                                            'delivery_date_required',
                                             event.target.value,
                                         )
                                     }
                                 />
+                                <InputError
+                                    message={
+                                        form.errors[
+                                            `purchase_orders.${index}.delivery_date_required`
+                                        ]
+                                    }
+                                />
                             </div>
                             <div className="space-y-2">
-                                <Label>Terms and conditions</Label>
+                                <Label htmlFor={`terms-${index}`}>
+                                    Terms and conditions
+                                </Label>
                                 <Textarea
+                                    id={`terms-${index}`}
                                     value={form.data.purchase_orders[index].terms_and_conditions}
                                     onChange={(event) =>
-                                        form.setData(
-                                            `purchase_orders.${index}.terms_and_conditions`,
+                                        updateOrder(
+                                            index,
+                                            'terms_and_conditions',
                                             event.target.value,
                                         )
                                     }

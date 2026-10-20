@@ -15,10 +15,12 @@
         "laravel/chisel": "^0.1.0",
         "laravel/fortify": "^1.37.2",
         "laravel/framework": "^13.17",
+        "laravel/pulse": "^1.8",
         "laravel/tinker": "^3.0",
         "laravel/wayfinder": "^0.1.14",
         "phpoffice/phpspreadsheet": "*",
         "phpoffice/phpword": "*",
+        "spatie/laravel-backup": "^10.3",
         "spatie/laravel-permission": "^8.3"
     },
     "require-dev": {

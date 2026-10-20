@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\Document;
+use App\Models\PurchaseRequest;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -43,6 +44,15 @@ class DocumentFactory extends Factory
             'documentable_id' => $user->id,
             'document_type' => 'other',
             'uploaded_by' => $user->id,
+        ]);
+    }
+
+    public function forPurchaseRequest(PurchaseRequest $purchaseRequest): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'documentable_type' => PurchaseRequest::class,
+            'documentable_id' => $purchaseRequest->id,
+            'document_type' => 'bac_rfq',
         ]);
     }
 }

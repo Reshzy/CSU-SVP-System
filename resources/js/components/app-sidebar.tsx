@@ -1,10 +1,9 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
-    BookOpen,
+    BarChart3,
     Building2,
     ClipboardList,
     FileSpreadsheet,
-    FolderGit2,
     Inbox,
     Layers,
     LayoutGrid,
@@ -12,6 +11,7 @@ import {
     Palette,
     Receipt,
     Stamp,
+    Store,
     UserCheck,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
@@ -43,7 +43,9 @@ import { index as supplyPurchaseOrdersIndex } from '@/routes/supply/purchase-ord
 import { index as supplyPurchaseRequestsIndex } from '@/routes/supply/purchase-requests';
 import { index as ppmpIndex } from '@/routes/ppmp';
 import { index as purchaseRequestsIndex } from '@/routes/purchase-requests';
+import { analytics, pr as reportsPr } from '@/routes/reports';
 import { index as psDbmsIndex } from '@/routes/ps-dbms';
+import { index as supplySuppliersIndex } from '@/routes/supply/suppliers';
 import type { NavItem, SvpRole } from '@/types';
 
 const mainNavItems: NavItem[] = [
@@ -89,6 +91,27 @@ const supplyNavItems: NavItem[] = [
         title: 'PO signatories',
         href: supplyPoSignatoriesIndex(),
         icon: Stamp,
+    },
+];
+
+const supplierNavItems: NavItem[] = [
+    {
+        title: 'Suppliers',
+        href: supplySuppliersIndex(),
+        icon: Store,
+    },
+];
+
+const reportNavItems: NavItem[] = [
+    {
+        title: 'PR report',
+        href: reportsPr(),
+        icon: BarChart3,
+    },
+    {
+        title: 'Analytics',
+        href: analytics(),
+        icon: BarChart3,
     },
 ];
 
@@ -167,18 +190,7 @@ const executiveOfficerNavItems: NavItem[] = [
     },
 ];
 
-const footerNavItems: NavItem[] = [
-    {
-        title: 'Repository',
-        href: 'https://github.com/laravel/react-starter-kit',
-        icon: FolderGit2,
-    },
-    {
-        title: 'Documentation',
-        href: 'https://laravel.com/docs/starter-kits#react',
-        icon: BookOpen,
-    },
-];
+const footerNavItems: NavItem[] = [];
 
 export function AppSidebar() {
     const { auth } = usePage().props;
@@ -217,6 +229,14 @@ export function AppSidebar() {
                     <NavMain items={supplyNavItems} label="Supply" />
                 )}
 
+                {auth.can?.manageSuppliers && (
+                    <NavMain items={supplierNavItems} label="Suppliers" />
+                )}
+
+                {auth.can?.viewReports && (
+                    <NavMain items={reportNavItems} label="Reports" />
+                )}
+
                 {isAccountingOffice && (
                     <NavMain items={accountingNavItems} label="Accounting" />
                 )}
@@ -240,7 +260,9 @@ export function AppSidebar() {
             </SidebarContent>
 
             <SidebarFooter>
-                <NavFooter items={footerNavItems} className="mt-auto" />
+                {footerNavItems.length > 0 && (
+                    <NavFooter items={footerNavItems} className="mt-auto" />
+                )}
                 <NavUser />
             </SidebarFooter>
         </Sidebar>

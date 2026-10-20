@@ -46,6 +46,10 @@ class HandleInertiaRequests extends Middleware
                 // the server with Spatie permissions and gates.
                 'roles' => $user?->getRoleNames() ?? [],
                 'primaryRole' => $user?->getPrimarySVPRole(),
+                'can' => [
+                    'viewReports' => $user?->can('view-reports') ?? false,
+                    'manageSuppliers' => $user?->can('manage-suppliers') ?? false,
+                ],
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];

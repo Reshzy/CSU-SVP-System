@@ -8,9 +8,11 @@ use App\Observers\PurchaseRequestObserver;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use PhpOffice\PhpWord\Settings;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -28,7 +30,9 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->configurePhpWordTempDirectory();
         $this->configureSuperAdminGate();
+        $this->configurePulseGate();
 
         PurchaseRequest::observe(PurchaseRequestObserver::class);
     }
@@ -46,6 +50,30 @@ class AppServiceProvider extends ServiceProvider
         Gate::before(function (User $user): ?bool {
             return $user->hasAnyRole(['System Admin', 'Executive Officer']) ? true : null;
         });
+    }
+
+    /**
+     * Pulse is ops telemetry, not the purchase-request activity timeline.
+     * System Admin (and Executive Officer via Gate::before) can open /pulse.
+     */
+    protected function configurePulseGate(): void
+    {
+        Gate::define('viewPulse', function (?User $user): bool {
+            return $user?->hasRole('System Admin') ?? false;
+        });
+    }
+
+    /**
+     * PhpWord defaults to sys_get_temp_dir(), which can be unwritable
+     * (C:\Windows) when PHP is spawned without a user TEMP.
+     */
+    protected function configurePhpWordTempDirectory(): void
+    {
+        $directory = storage_path('app/phpword-temp');
+
+        File::ensureDirectoryExists($directory);
+
+        Settings::setTempDir($directory);
     }
 
     /**

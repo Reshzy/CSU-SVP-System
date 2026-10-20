@@ -40,7 +40,8 @@ export default function SupplyPoSignatoriesEdit({ signatory, users }: Props) {
                         form.transform((data) => ({
                             ...data,
                             user_id: data.user_id === '' ? null : Number(data.user_id),
-                        })).put(update.url(signatory.id));
+                        }));
+                        form.put(update.url(signatory.id));
                     }}
                 >
                     <div className="space-y-2">
