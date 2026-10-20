@@ -195,6 +195,14 @@ class PurchaseRequest extends Model
     }
 
     /**
+     * @return HasMany<PurchaseOrder, $this>
+     */
+    public function purchaseOrders(): HasMany
+    {
+        return $this->hasMany(PurchaseOrder::class);
+    }
+
+    /**
      * @return MorphMany<Document, $this>
      */
     public function documents(): MorphMany

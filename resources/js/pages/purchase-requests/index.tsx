@@ -1,5 +1,13 @@
 import { Head, Link } from '@inertiajs/react';
 import { Plus } from 'lucide-react';
+import { useMemo } from 'react';
+import {
+    createDataTableColumnHelper,
+    DataTable,
+    humanizeStatus,
+    type DataTableFilterDef,
+    type TableQueryFilters,
+} from '@/components/data-table';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
 import { create, index, show } from '@/routes/purchase-requests';
@@ -18,14 +26,60 @@ type PurchaseRequestRow = {
 
 type Props = {
     purchaseRequests: Paginated<PurchaseRequestRow>;
+    filters: TableQueryFilters;
+    statusOptions: DataTableFilterDef['options'];
     canCreate: boolean;
 };
 
-function statusLabel(status: string): string {
-    return status === 'rejected' ? 'Deferred' : status.replaceAll('_', ' ');
-}
+const columnHelper = createDataTableColumnHelper<PurchaseRequestRow>();
 
-export default function PurchaseRequestIndex({ purchaseRequests, canCreate }: Props) {
+export default function PurchaseRequestIndex({
+    purchaseRequests,
+    filters,
+    statusOptions,
+    canCreate,
+}: Props) {
+    const columns = useMemo(
+        () => [
+            columnHelper.accessor('pr_number', {
+                header: 'PR number',
+                cell: ({ row, getValue }) => (
+                    <Link
+                        href={show.url(row.original.id)}
+                        className="text-primary font-medium underline-offset-4 hover:underline"
+                    >
+                        {getValue() ?? `#${row.original.id}`}
+                    </Link>
+                ),
+            }),
+            columnHelper.accessor('pr_title', { header: 'Title' }),
+            columnHelper.accessor('status', {
+                header: 'Status',
+                cell: ({ getValue }) => (
+                    <span className="capitalize">{humanizeStatus(getValue())}</span>
+                ),
+            }),
+            columnHelper.accessor('estimated_total', {
+                header: 'Total',
+                cell: ({ getValue }) =>
+                    Number(getValue()).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                    }),
+            }),
+            columnHelper.accessor((row) => row.requester?.name ?? '', {
+                id: 'requester',
+                header: 'Requester',
+                enableSorting: false,
+            }),
+            columnHelper.accessor('created_at', {
+                header: 'Created',
+                cell: ({ getValue }) =>
+                    new Date(getValue()).toLocaleDateString(),
+            }),
+        ],
+        [],
+    );
+
     return (
         <>
             <Head title="Purchase requests" />
@@ -46,48 +100,24 @@ export default function PurchaseRequestIndex({ purchaseRequests, canCreate }: Pr
                     )}
                 </div>
 
-                <div className="overflow-x-auto rounded-lg border">
-                    <table className="w-full text-sm">
-                        <thead className="bg-muted/50 text-left">
-                            <tr>
-                                <th className="px-3 py-2 font-medium">PR number</th>
-                                <th className="px-3 py-2 font-medium">Title</th>
-                                <th className="px-3 py-2 font-medium">Status</th>
-                                <th className="px-3 py-2 font-medium">Total</th>
-                                <th className="px-3 py-2 font-medium">Requester</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {purchaseRequests.data.length === 0 && (
-                                <tr>
-                                    <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
-                                        No purchase requests yet.
-                                    </td>
-                                </tr>
-                            )}
-                            {purchaseRequests.data.map((pr) => (
-                                <tr key={pr.id} className="border-t">
-                                    <td className="px-3 py-2">
-                                        <Link
-                                            href={show.url(pr.id)}
-                                            className="font-medium text-primary underline-offset-4 hover:underline"
-                                        >
-                                            {pr.pr_number ?? `#${pr.id}`}
-                                        </Link>
-                                    </td>
-                                    <td className="px-3 py-2">{pr.pr_title}</td>
-                                    <td className="px-3 py-2 capitalize">{statusLabel(pr.status)}</td>
-                                    <td className="px-3 py-2">
-                                        {Number(pr.estimated_total).toLocaleString(undefined, {
-                                            minimumFractionDigits: 2,
-                                        })}
-                                    </td>
-                                    <td className="px-3 py-2">{pr.requester?.name}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                <DataTable
+                    tableId="purchase-requests"
+                    visitUrl={index.url()}
+                    paginated={purchaseRequests}
+                    columns={columns}
+                    filters={filters}
+                    searchPlaceholder="PR number or title"
+                    filterDefs={[
+                        { id: 'status', label: 'Status', options: statusOptions },
+                    ]}
+                    dateColumn="created_at"
+                    dateLabel="Created"
+                    initialPinning={{ start: ['pr_number'] }}
+                    rowActions={(row) => [
+                        { label: 'View', href: show.url(row.id) },
+                    ]}
+                    emptyMessage="No purchase requests yet."
+                />
             </div>
         </>
     );

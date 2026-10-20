@@ -1,13 +1,13 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { flexRender } from '@tanstack/react-table/flex-render';
-import {
-    getCoreRowModel,
-    legacyCreateColumnHelper,
-    useLegacyTable,
-} from '@tanstack/react-table/legacy';
 import { useMemo } from 'react';
+import {
+    createDataTableColumnHelper,
+    DataTable,
+    humanizeStatus,
+    type DataTableFilterDef,
+    type TableQueryFilters,
+} from '@/components/data-table';
 import Heading from '@/components/heading';
-import { Button } from '@/components/ui/button';
 import { index, show, status } from '@/routes/supply/purchase-requests';
 import type { Paginated } from '@/types';
 
@@ -19,107 +19,91 @@ type Row = {
     estimated_total: string;
     department?: { name: string } | null;
     requester?: { name: string } | null;
+    created_at?: string;
 };
 
 type Props = {
     purchaseRequests: Paginated<Row>;
+    filters: TableQueryFilters;
+    statusOptions: DataTableFilterDef['options'];
 };
 
-const columnHelper = legacyCreateColumnHelper<Row>();
+const columnHelper = createDataTableColumnHelper<Row>();
 
-export default function SupplyPurchaseRequestIndex({ purchaseRequests }: Props) {
+export default function SupplyPurchaseRequestIndex({
+    purchaseRequests,
+    filters,
+    statusOptions,
+}: Props) {
     const columns = useMemo(
         () => [
             columnHelper.accessor('pr_number', {
                 header: 'PR number',
-                cell: (info) => (
+                cell: ({ row, getValue }) => (
                     <Link
-                        href={show.url(info.row.original.id)}
-                        className="font-medium text-primary underline-offset-4 hover:underline"
+                        href={show.url(row.original.id)}
+                        className="text-primary font-medium underline-offset-4 hover:underline"
                     >
-                        {info.getValue() ?? `#${info.row.original.id}`}
+                        {getValue() ?? `#${row.original.id}`}
                     </Link>
                 ),
             }),
             columnHelper.accessor('pr_title', { header: 'Title' }),
             columnHelper.accessor('status', {
                 header: 'Status',
-                cell: (info) => (
-                    <span className="capitalize">
-                        {info.getValue() === 'rejected' ? 'Deferred' : info.getValue().replaceAll('_', ' ')}
-                    </span>
+                cell: ({ getValue }) => (
+                    <span className="capitalize">{humanizeStatus(getValue())}</span>
                 ),
             }),
             columnHelper.accessor('estimated_total', {
                 header: 'Total',
-                cell: (info) =>
-                    Number(info.getValue()).toLocaleString(undefined, { minimumFractionDigits: 2 }),
+                cell: ({ getValue }) =>
+                    Number(getValue()).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                    }),
             }),
-            columnHelper.accessor((row) => row.requester?.name ?? '', { id: 'requester', header: 'Requester' }),
-            columnHelper.display({
-                id: 'actions',
-                header: 'Actions',
-                cell: (info) => (
-                    <Button
-                        size="sm"
-                        onClick={() =>
-                            router.post(status.url(info.row.original.id), {
-                                action: 'activate',
-                            })
-                        }
-                    >
-                        Activate
-                    </Button>
-                ),
+            columnHelper.accessor((row) => row.requester?.name ?? '', {
+                id: 'requester',
+                header: 'Requester',
+                enableSorting: false,
             }),
         ],
         [],
     );
 
-    const table = useLegacyTable({
-        data: purchaseRequests.data,
-        columns,
-        getCoreRowModel: getCoreRowModel(),
-    });
-
     return (
         <>
             <Head title="Supply queue" />
             <div className="flex flex-1 flex-col gap-6 p-4">
-                <Heading title="Supply queue" description="Review and activate purchase requests." />
-                <div className="overflow-x-auto rounded-lg border">
-                    <table className="w-full text-sm">
-                        <thead className="bg-muted/50 text-left">
-                            {table.getHeaderGroups().map((headerGroup) => (
-                                <tr key={headerGroup.id}>
-                                    {headerGroup.headers.map((header) => (
-                                        <th key={header.id} className="px-3 py-2 font-medium">
-                                            {flexRender(header.column.columnDef.header, header.getContext())}
-                                        </th>
-                                    ))}
-                                </tr>
-                            ))}
-                        </thead>
-                        <tbody>
-                            {table.getRowModel().rows.length === 0 && (
-                                <tr>
-                                    <td colSpan={columns.length} className="px-3 py-8 text-center text-muted-foreground">
-                                        No requests in the Supply queue.
-                                    </td>
-                                </tr>
-                            )}
-                            {table.getRowModel().rows.map((row) => (
-                                <tr key={row.id} className="border-t">
-                                    {row.getVisibleCells().map((cell) => (
-                                        <td key={cell.id} className="px-3 py-2">
-                                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                        </td>
-                                    ))}
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                <Heading
+                    title="Supply queue"
+                    description="Review and activate purchase requests."
+                />
+                <DataTable
+                    tableId="supply-purchase-requests"
+                    visitUrl={index.url()}
+                    paginated={purchaseRequests}
+                    columns={columns}
+                    filters={filters}
+                    searchPlaceholder="PR number or title"
+                    filterDefs={[
+                        { id: 'status', label: 'Status', options: statusOptions },
+                    ]}
+                    dateColumn="created_at"
+                    dateLabel="Created"
+                    initialPinning={{ start: ['pr_number'] }}
+                    rowActions={(row) => [
+                        { label: 'View', href: show.url(row.id) },
+                        {
+                            label: 'Activate',
+                            onClick: () =>
+                                router.post(status.url(row.id), {
+                                    action: 'activate',
+                                }),
+                        },
+                    ]}
+                    emptyMessage="No requests in the Supply queue."
+                />
             </div>
         </>
     );

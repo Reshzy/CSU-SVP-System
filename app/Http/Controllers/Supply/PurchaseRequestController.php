@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Supply;
 
 use App\Concerns\FlashesToasts;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ListQueryRequest;
 use App\Models\PurchaseRequest;
 use App\Models\PurchaseRequestItem;
 use App\Notifications\PurchaseRequestStatusUpdated;
 use App\Services\PurchaseRequestActivityLogger;
 use App\Services\PurchaseRequestExportService;
 use App\Services\WorkflowRouter;
+use App\Support\ListQuery;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -22,20 +24,42 @@ class PurchaseRequestController extends Controller
 {
     use FlashesToasts;
 
-    public function index(Request $request): Response
+    public function index(ListQueryRequest $request): Response
     {
         Gate::authorize('viewAny', PurchaseRequest::class);
 
-        $purchaseRequests = PurchaseRequest::query()
+        $queueStatuses = ['submitted', 'supply_office_review', 'returned_by_supply'];
+
+        $query = PurchaseRequest::query()
             ->with(['department:id,name,code', 'requester:id,name'])
-            ->whereIn('status', ['submitted', 'supply_office_review', 'returned_by_supply'])
-            ->where('is_archived', false)
-            ->latest()
-            ->paginate(20)
-            ->withQueryString();
+            ->whereIn('status', $queueStatuses)
+            ->where('is_archived', false);
 
         return Inertia::render('supply/purchase-requests/index', [
-            'purchaseRequests' => $purchaseRequests,
+            'purchaseRequests' => ListQuery::paginate($query, $request, [
+                'searchable' => ['pr_number', 'pr_title'],
+                'sortable' => [
+                    'pr_number' => 'pr_number',
+                    'pr_title' => 'pr_title',
+                    'status' => 'status',
+                    'estimated_total' => 'estimated_total',
+                    'created_at' => 'created_at',
+                ],
+                'equals' => ['status' => 'status'],
+                'dateColumn' => 'created_at',
+                'defaultSort' => 'created_at',
+                'defaultDirection' => 'desc',
+                'defaultPerPage' => 20,
+            ]),
+            'filters' => ListQuery::snapshot($request, [
+                'status' => $request->filled('status') ? $request->string('status')->value() : null,
+            ]),
+            'statusOptions' => collect($queueStatuses)
+                ->map(fn (string $status): array => [
+                    'value' => $status,
+                    'label' => str_replace('_', ' ', $status),
+                ])
+                ->all(),
         ]);
     }
 

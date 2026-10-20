@@ -9,12 +9,12 @@ class PurchaseRequestPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->department_id !== null || $user->hasAnyRole(['Supply Officer', 'Budget Office', 'Executive Officer', 'BAC Chair', 'BAC Members', 'BAC Secretariat', 'System Admin']);
+        return $user->department_id !== null || $user->hasAnyRole(['Supply Officer', 'Budget Office', 'Executive Officer', 'BAC Chair', 'BAC Members', 'BAC Secretariat', 'System Admin', 'Accounting Office']);
     }
 
     public function view(User $user, PurchaseRequest $purchaseRequest): bool
     {
-        if ($user->hasAnyRole(['Supply Officer', 'Budget Office', 'Executive Officer', 'BAC Chair', 'BAC Members', 'BAC Secretariat', 'System Admin'])) {
+        if ($user->hasAnyRole(['Supply Officer', 'Budget Office', 'Executive Officer', 'BAC Chair', 'BAC Members', 'BAC Secretariat', 'System Admin', 'Accounting Office'])) {
             return true;
         }
 

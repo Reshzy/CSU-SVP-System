@@ -172,3 +172,32 @@ test('the catalog index lists the imported items for the chosen year', function 
             ->where('appItems.data.0.item_name', 'Ballpen, black')
         );
 });
+
+test('the catalog index searches and paginates items', function () {
+    AppItem::factory()->forFiscalYear(2025)->create([
+        'item_name' => 'Ballpen, black',
+        'item_code' => 'BP-001',
+        'category' => 'OFFICE SUPPLIES',
+    ]);
+    AppItem::factory()->forFiscalYear(2025)->create([
+        'item_name' => 'Laptop',
+        'item_code' => 'LPT-001',
+        'category' => 'ICT EQUIPMENT',
+    ]);
+
+    $this->actingAs($this->secretariat)
+        ->get(route('ps-dbms.index', ['fiscal_year' => 2025, 'search' => 'Laptop']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->count('appItems.data', 1)
+            ->where('appItems.data.0.item_code', 'LPT-001')
+        );
+
+    $this->actingAs($this->secretariat)
+        ->get(route('ps-dbms.index', ['fiscal_year' => 2025, 'sort' => 'item_code', 'direction' => 'asc', 'per_page' => 10]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('appItems.per_page', 10)
+            ->where('appItems.data.0.item_code', 'BP-001')
+        );
+});

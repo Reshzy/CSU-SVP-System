@@ -97,6 +97,33 @@ test('there is no route for deleting a department', function () {
     expect($department->fresh())->not->toBeNull();
 });
 
+test('the department list searches by name and can sort by code', function () {
+    Department::factory()->create(['name' => 'College of Agriculture', 'code' => 'COA']);
+    Department::factory()->create(['name' => 'College of Engineering', 'code' => 'COE']);
+
+    $this->actingAs($this->executiveOfficer)
+        ->get(route('ceo.departments.index', ['search' => 'Engineering']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('ceo/departments/index')
+            ->count('departments.data', 1)
+            ->where('departments.data.0.code', 'COE')
+        );
+
+    $this->actingAs($this->executiveOfficer)
+        ->get(route('ceo.departments.index', ['sort' => 'code', 'direction' => 'asc']))
+        ->assertOk()
+        ->assertInertia(function ($page) {
+            $codes = collect($page->toArray()['props']['departments']['data'])->pluck('code')->all();
+            $agriculture = array_search('COA', $codes, true);
+            $engineering = array_search('COE', $codes, true);
+
+            expect($agriculture)->toBeInt()
+                ->and($engineering)->toBeInt()
+                ->and($agriculture)->toBeLessThan($engineering);
+        });
+});
+
 test('a user without the Executive Officer role cannot manage departments', function () {
     $dean = User::factory()->create();
     $dean->assignRole('Dean');

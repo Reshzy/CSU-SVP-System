@@ -6,9 +6,10 @@ use App\Concerns\FlashesToasts;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Ceo\StoreDepartmentRequest;
 use App\Http\Requests\Ceo\UpdateDepartmentRequest;
+use App\Http\Requests\ListQueryRequest;
 use App\Models\Department;
+use App\Support\ListQuery;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -20,21 +21,32 @@ class DepartmentController extends Controller
 {
     use FlashesToasts;
 
-    public function index(Request $request): Response
+    public function index(ListQueryRequest $request): Response
     {
-        $departments = Department::query()
-            ->withCount('users')
-            ->when($request->filled('search'), function ($query) use ($request): void {
-                $search = '%'.$request->string('search')->trim().'%';
-                $query->where(fn ($q) => $q->where('name', 'like', $search)->orWhere('code', 'like', $search));
-            })
-            ->orderBy('name')
-            ->paginate(15)
-            ->withQueryString();
+        $departments = ListQuery::paginate(
+            Department::query()->withCount('users'),
+            $request,
+            [
+                'searchable' => ['name', 'code'],
+                'sortable' => [
+                    'code' => 'code',
+                    'name' => 'name',
+                    'head_name' => 'head_name',
+                    'users_count' => 'users_count',
+                    'is_active' => 'is_active',
+                ],
+                'equals' => ['is_active' => 'is_active'],
+                'defaultSort' => 'name',
+                'defaultDirection' => 'asc',
+                'defaultPerPage' => 15,
+            ],
+        );
 
         return Inertia::render('ceo/departments/index', [
             'departments' => $departments,
-            'filters' => ['search' => $request->string('search')->value()],
+            'filters' => ListQuery::snapshot($request, [
+                'is_active' => $request->filled('is_active') ? $request->string('is_active')->value() : null,
+            ]),
         ]);
     }
 

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Accounting\DisbursementVoucherController;
 use App\Http\Controllers\Api\BudgetCheckController;
 use App\Http\Controllers\AppConsolidationController;
 use App\Http\Controllers\AppItemController;
@@ -20,6 +21,9 @@ use App\Http\Controllers\HealthController;
 use App\Http\Controllers\PpmpController;
 use App\Http\Controllers\PurchaseRequestController;
 use App\Http\Controllers\PurchaseRequestReplacementController;
+use App\Http\Controllers\Supply\InventoryReceiptController;
+use App\Http\Controllers\Supply\PoSignatoryController;
+use App\Http\Controllers\Supply\PurchaseOrderController;
 use App\Http\Controllers\Supply\PurchaseRequestController as SupplyPurchaseRequestController;
 use Illuminate\Foundation\Http\Middleware\HandlePrecognitiveRequests;
 use Illuminate\Support\Facades\Route;
@@ -72,6 +76,50 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
             ->name('purchase-requests.lots.destroy');
         Route::get('purchase-requests/{purchaseRequest}/export', [SupplyPurchaseRequestController::class, 'export'])
             ->name('purchase-requests.export');
+
+        Route::get('purchase-orders', [PurchaseOrderController::class, 'index'])
+            ->name('purchase-orders.index');
+        Route::get('purchase-requests/{purchaseRequest}/purchase-orders/preview', [PurchaseOrderController::class, 'preview'])
+            ->name('purchase-orders.preview');
+        Route::get('purchase-requests/{purchaseRequest}/purchase-orders/batch-create', [PurchaseOrderController::class, 'batchCreate'])
+            ->name('purchase-orders.batch-create');
+        Route::post('purchase-requests/{purchaseRequest}/purchase-orders/batch', [PurchaseOrderController::class, 'batchStore'])
+            ->name('purchase-orders.batch-store');
+        Route::get('purchase-requests/{purchaseRequest}/purchase-orders/create', [PurchaseOrderController::class, 'create'])
+            ->name('purchase-orders.create');
+        Route::post('purchase-requests/{purchaseRequest}/purchase-orders', [PurchaseOrderController::class, 'store'])
+            ->name('purchase-orders.store');
+        Route::get('purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'show'])
+            ->name('purchase-orders.show');
+        Route::get('purchase-orders/{purchaseOrder}/edit', [PurchaseOrderController::class, 'edit'])
+            ->name('purchase-orders.edit');
+        Route::put('purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'update'])
+            ->name('purchase-orders.update');
+        Route::get('purchase-orders/{purchaseOrder}/export', [PurchaseOrderController::class, 'export'])
+            ->name('purchase-orders.export');
+
+        Route::resource('po-signatories', PoSignatoryController::class)
+            ->except(['show'])
+            ->parameters(['po-signatories' => 'poSignatory']);
+
+        Route::get('inventory-receipts', [InventoryReceiptController::class, 'index'])
+            ->name('inventory-receipts.index');
+        Route::get('purchase-orders/{purchaseOrder}/inventory-receipts/create', [InventoryReceiptController::class, 'create'])
+            ->name('inventory-receipts.create');
+        Route::post('purchase-orders/{purchaseOrder}/inventory-receipts', [InventoryReceiptController::class, 'store'])
+            ->name('inventory-receipts.store');
+        Route::get('inventory-receipts/{inventoryReceipt}', [InventoryReceiptController::class, 'show'])
+            ->name('inventory-receipts.show');
+    });
+
+    Route::middleware('role:Accounting Office')->prefix('accounting')->name('accounting.')->group(function () {
+        Route::get('vouchers', [DisbursementVoucherController::class, 'index'])->name('vouchers.index');
+        Route::get('purchase-orders/{purchaseOrder}/vouchers/create', [DisbursementVoucherController::class, 'create'])
+            ->name('vouchers.create');
+        Route::post('purchase-orders/{purchaseOrder}/vouchers', [DisbursementVoucherController::class, 'store'])
+            ->name('vouchers.store');
+        Route::get('vouchers/{voucher}', [DisbursementVoucherController::class, 'show'])->name('vouchers.show');
+        Route::put('vouchers/{voucher}', [DisbursementVoucherController::class, 'update'])->name('vouchers.update');
     });
 
     Route::get('api/budget/check', [BudgetCheckController::class, 'check'])->name('api.budget.check');

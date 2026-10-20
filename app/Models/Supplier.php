@@ -34,6 +34,14 @@ class Supplier extends Model
         return $this->hasMany(Quotation::class);
     }
 
+    /**
+     * @return HasMany<PurchaseOrder, $this>
+     */
+    public function purchaseOrders(): HasMany
+    {
+        return $this->hasMany(PurchaseOrder::class);
+    }
+
     protected function casts(): array
     {
         return [

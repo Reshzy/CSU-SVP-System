@@ -3,12 +3,15 @@ import {
     BookOpen,
     Building2,
     ClipboardList,
+    FileSpreadsheet,
     FolderGit2,
     Inbox,
     Layers,
     LayoutGrid,
     Library,
     Palette,
+    Receipt,
+    Stamp,
     UserCheck,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
@@ -33,6 +36,10 @@ import { index as bacQuotationsIndex } from '@/routes/bac/quotations';
 import { index as budgetIndex } from '@/routes/budget';
 import { index as budgetPurchaseRequestsIndex } from '@/routes/budget/purchase-requests';
 import { index as ceoPurchaseRequestsIndex } from '@/routes/ceo/purchase-requests';
+import { index as accountingVouchersIndex } from '@/routes/accounting/vouchers';
+import { index as supplyInventoryReceiptsIndex } from '@/routes/supply/inventory-receipts';
+import { index as supplyPoSignatoriesIndex } from '@/routes/supply/po-signatories';
+import { index as supplyPurchaseOrdersIndex } from '@/routes/supply/purchase-orders';
 import { index as supplyPurchaseRequestsIndex } from '@/routes/supply/purchase-requests';
 import { index as ppmpIndex } from '@/routes/ppmp';
 import { index as purchaseRequestsIndex } from '@/routes/purchase-requests';
@@ -67,6 +74,29 @@ const supplyNavItems: NavItem[] = [
         title: 'Supply queue',
         href: supplyPurchaseRequestsIndex(),
         icon: Inbox,
+    },
+    {
+        title: 'Purchase orders',
+        href: supplyPurchaseOrdersIndex(),
+        icon: FileSpreadsheet,
+    },
+    {
+        title: 'Inventory receipts',
+        href: supplyInventoryReceiptsIndex(),
+        icon: Receipt,
+    },
+    {
+        title: 'PO signatories',
+        href: supplyPoSignatoriesIndex(),
+        icon: Stamp,
+    },
+];
+
+const accountingNavItems: NavItem[] = [
+    {
+        title: 'Disbursement vouchers',
+        href: accountingVouchersIndex(),
+        icon: Receipt,
     },
 ];
 
@@ -157,6 +187,7 @@ export function AppSidebar() {
     // `role:` and `can:` middleware on the server.
     const isExecutiveOfficer = auth.roles.includes('Executive Officer');
     const isSupplyOfficer = auth.roles.includes('Supply Officer');
+    const isAccountingOffice = auth.roles.includes('Accounting Office');
     const isBudgetOffice = auth.roles.includes('Budget Office');
     const isBac = ['BAC Chair', 'BAC Members', 'BAC Secretariat'].some((role) =>
         auth.roles.includes(role as SvpRole),
@@ -184,6 +215,10 @@ export function AppSidebar() {
 
                 {isSupplyOfficer && (
                     <NavMain items={supplyNavItems} label="Supply" />
+                )}
+
+                {isAccountingOffice && (
+                    <NavMain items={accountingNavItems} label="Accounting" />
                 )}
 
                 {isBudgetOffice && (

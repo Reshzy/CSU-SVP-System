@@ -184,3 +184,28 @@ test('replacement after return archives the original purchase request', function
         ->and($replacement->status)->toBe('supply_office_review')
         ->and($this->purchaseRequest->replaced_by_pr_id)->toBe($replacement->id);
 });
+
+test('the supply queue searches and paginates purchase requests', function () {
+    $this->purchaseRequest->update(['pr_title' => 'Bond paper', 'pr_number' => 'PR-2026-0100']);
+    PurchaseRequest::factory()->create([
+        'department_id' => $this->department->id,
+        'requester_id' => $this->requester->id,
+        'status' => 'supply_office_review',
+        'pr_title' => 'Laptop units',
+        'pr_number' => 'PR-2026-0101',
+    ]);
+
+    $this->actingAs($this->supplyOfficer)
+        ->get(route('supply.purchase-requests.index', ['search' => 'Bond']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('supply/purchase-requests/index')
+            ->count('purchaseRequests.data', 1)
+            ->where('purchaseRequests.data.0.pr_title', 'Bond paper')
+        );
+
+    $this->actingAs($this->supplyOfficer)
+        ->get(route('supply.purchase-requests.index', ['per_page' => 10]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('purchaseRequests.per_page', 10));
+});

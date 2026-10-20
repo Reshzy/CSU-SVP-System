@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Concerns\FlashesToasts;
 use App\Enums\PpmpStatus;
+use App\Http\Requests\ListQueryRequest;
 use App\Http\Requests\PurchaseRequest\StorePurchaseRequestRequest;
 use App\Models\Ppmp;
 use App\Models\PpmpItem;
@@ -12,6 +13,7 @@ use App\Models\PurchaseRequestItem;
 use App\Models\User;
 use App\Notifications\PurchaseRequestSubmitted;
 use App\Services\PpmpQuarterlyTracker;
+use App\Support\ListQuery;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -24,22 +26,52 @@ class PurchaseRequestController extends Controller
 {
     use FlashesToasts;
 
-    public function index(Request $request): Response
+    public function index(ListQueryRequest $request): Response
     {
         Gate::authorize('viewAny', PurchaseRequest::class);
 
         $user = $request->user();
 
         $query = PurchaseRequest::query()
-            ->with(['department:id,name,code', 'requester:id,name'])
-            ->latest();
+            ->with(['department:id,name,code', 'requester:id,name']);
 
         if (! $user->hasAnyRole(['Supply Officer', 'Budget Office', 'Executive Officer', 'BAC Chair', 'BAC Members', 'BAC Secretariat', 'System Admin'])) {
             $query->where('department_id', $user->department_id);
         }
 
+        $statusOptions = (clone $query)
+            ->reorder()
+            ->select('status')
+            ->distinct()
+            ->orderBy('status')
+            ->pluck('status')
+            ->map(fn (string $status): array => [
+                'value' => $status,
+                'label' => $status === 'rejected' ? 'Deferred' : str_replace('_', ' ', $status),
+            ])
+            ->values()
+            ->all();
+
         return Inertia::render('purchase-requests/index', [
-            'purchaseRequests' => $query->paginate(15)->withQueryString(),
+            'purchaseRequests' => ListQuery::paginate($query, $request, [
+                'searchable' => ['pr_number', 'pr_title'],
+                'sortable' => [
+                    'pr_number' => 'pr_number',
+                    'pr_title' => 'pr_title',
+                    'status' => 'status',
+                    'estimated_total' => 'estimated_total',
+                    'created_at' => 'created_at',
+                ],
+                'equals' => ['status' => 'status'],
+                'dateColumn' => 'created_at',
+                'defaultSort' => 'created_at',
+                'defaultDirection' => 'desc',
+                'defaultPerPage' => 15,
+            ]),
+            'filters' => ListQuery::snapshot($request, [
+                'status' => $request->filled('status') ? $request->string('status')->value() : null,
+            ]),
+            'statusOptions' => $statusOptions,
             'canCreate' => Gate::allows('create', PurchaseRequest::class),
         ]);
     }

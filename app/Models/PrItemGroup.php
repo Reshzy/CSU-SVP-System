@@ -69,6 +69,14 @@ class PrItemGroup extends Model
         return $this->hasOne(AoqGeneration::class, 'pr_item_group_id');
     }
 
+    /**
+     * @return HasMany<PurchaseOrder, $this>
+     */
+    public function purchaseOrders(): HasMany
+    {
+        return $this->hasMany(PurchaseOrder::class, 'pr_item_group_id');
+    }
+
     public static function generateNextGroupCode(PurchaseRequest $purchaseRequest): string
     {
         $lastOrder = static::query()
@@ -84,12 +92,33 @@ class PrItemGroup extends Model
     }
 
     /**
-     * Effective group status. Purchase orders are Slice 8; until then a group
-     * is pending or aoq_generated.
+     * Effective group status from AOQ and purchase orders.
      */
     public function computeStatus(): string
     {
-        return $this->aoqGeneration()->exists() ? 'aoq_generated' : 'pending';
+        $purchaseOrders = $this->purchaseOrders;
+
+        if ($purchaseOrders->isEmpty()) {
+            return $this->aoqGeneration()->exists() ? 'aoq_generated' : 'pending';
+        }
+
+        if ($purchaseOrders->every(fn (PurchaseOrder $purchaseOrder): bool => $purchaseOrder->status === 'completed')) {
+            return 'completed';
+        }
+
+        if ($purchaseOrders->every(fn (PurchaseOrder $purchaseOrder): bool => in_array($purchaseOrder->status, ['delivered', 'completed'], true))) {
+            return 'delivered';
+        }
+
+        if ($purchaseOrders->contains(fn (PurchaseOrder $purchaseOrder): bool => in_array($purchaseOrder->status, ['sent_to_supplier', 'acknowledged_by_supplier', 'delivered', 'completed'], true))) {
+            return 'processing';
+        }
+
+        if ($purchaseOrders->every(fn (PurchaseOrder $purchaseOrder): bool => in_array($purchaseOrder->status, ['approved', 'sent_to_supplier', 'acknowledged_by_supplier', 'delivered', 'completed'], true))) {
+            return 'all_po_approved';
+        }
+
+        return 'po_created';
     }
 
     public function canCreateAoq(): bool

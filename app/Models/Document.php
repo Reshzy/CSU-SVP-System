@@ -74,6 +74,27 @@ class Document extends Model
         return $this->belongsTo(User::class, 'uploaded_by');
     }
 
+    public static function generateNextDocumentNumber(?Carbon $at = null): string
+    {
+        $at ??= now();
+        $mmyy = $at->format('my');
+        $pattern = "DOC-{$mmyy}-";
+
+        $latest = static::query()
+            ->where('document_number', 'like', $pattern.'%')
+            ->orderByDesc('document_number')
+            ->lockForUpdate()
+            ->value('document_number');
+
+        $sequence = 1;
+
+        if (is_string($latest) && preg_match('/-(\d{4})$/', $latest, $matches) === 1) {
+            $sequence = (int) $matches[1] + 1;
+        }
+
+        return $pattern.sprintf('%04d', $sequence);
+    }
+
     protected function casts(): array
     {
         return [
