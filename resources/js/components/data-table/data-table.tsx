@@ -39,6 +39,7 @@ import { useInertiaTable } from './use-inertia-table';
 import { useTablePreferences } from './use-table-preferences';
 import {
     asFilterString,
+    columnFills,
     computeColumnLayout,
     DEFAULT_COLUMN_MIN_SIZE,
     pinnedStyle,
@@ -101,6 +102,7 @@ export function DataTable<TData extends RowData>({
             columnVisibility: {},
             columnSizing: {},
             columnPinning: defaultPinning,
+            columnFill: {},
             pageSize: defaultPageSize,
         },
     );
@@ -285,9 +287,15 @@ export function DataTable<TData extends RowData>({
     }, []);
 
     const layout = useMemo(
-        () => computeColumnLayout(table.getVisibleLeafColumns(), containerWidth),
+        () =>
+            computeColumnLayout(
+                table.getVisibleLeafColumns(),
+                containerWidth,
+                preferences.columnFill,
+            ),
         [
             containerWidth,
+            preferences.columnFill,
             preferences.columnPinning,
             preferences.columnSizing,
             preferences.columnVisibility,
@@ -432,6 +440,19 @@ export function DataTable<TData extends RowData>({
                                                         <DataTableColumnHeader
                                                             header={header}
                                                             title={header.column.columnDef.header}
+                                                            fill={columnFills(
+                                                                header.column,
+                                                                preferences.columnFill,
+                                                            )}
+                                                            onFillChange={(value) =>
+                                                                setPreferences((current) => ({
+                                                                    ...current,
+                                                                    columnFill: {
+                                                                        ...current.columnFill,
+                                                                        [header.column.id]: value,
+                                                                    },
+                                                                }))
+                                                            }
                                                         />
                                                     )
                                                   : (

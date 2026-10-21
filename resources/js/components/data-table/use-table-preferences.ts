@@ -6,6 +6,7 @@ export type TablePreferences = {
     columnVisibility: ColumnVisibilityState;
     columnSizing: ColumnSizingState;
     columnPinning: ColumnPinningState;
+    columnFill: Record<string, boolean>;
     pageSize: PageSize;
 };
 
@@ -44,6 +45,10 @@ function readPreferences(tableId: string, fallback: TablePreferences): TablePref
                 start: parsed.columnPinning?.start ?? fallback.columnPinning.start,
                 end: parsed.columnPinning?.end ?? fallback.columnPinning.end,
             },
+            columnFill:
+                parsed.columnFill && typeof parsed.columnFill === 'object'
+                    ? parsed.columnFill
+                    : fallback.columnFill,
             pageSize: isPageSize(parsed.pageSize) ? parsed.pageSize : fallback.pageSize,
         };
     } catch {
@@ -74,6 +79,7 @@ export function useTablePreferences(tableId: string, defaults: TablePreferences)
                 start: [...(defaults.columnPinning.start ?? [])],
                 end: [...(defaults.columnPinning.end ?? [])],
             },
+            columnFill: {},
             pageSize: defaults.pageSize,
         });
     }, [defaults]);

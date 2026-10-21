@@ -54,9 +54,17 @@ export function clampColumnSize(
     return Math.min(maxSize, Math.max(minSize, size));
 }
 
+export function columnFills(
+    column: { id: string; columnDef: { meta?: { fill?: boolean } } },
+    overrides: Record<string, boolean> = {},
+): boolean {
+    return overrides[column.id] ?? column.columnDef.meta?.fill ?? false;
+}
+
 export function computeColumnLayout<TData extends RowData>(
     columns: Column<DataTableFeatures, TData, unknown>[],
     containerWidth: number,
+    fillOverrides: Record<string, boolean> = {},
 ): ColumnLayout {
     const widths = new Map<string, number>();
 
@@ -64,7 +72,7 @@ export function computeColumnLayout<TData extends RowData>(
         widths.set(column.id, column.getSize());
     }
 
-    const fillColumns = columns.filter((column) => column.columnDef.meta?.fill);
+    const fillColumns = columns.filter((column) => columnFills(column, fillOverrides));
     const baseTotal = columns.reduce(
         (total, column) => total + (widths.get(column.id) ?? 0),
         0,

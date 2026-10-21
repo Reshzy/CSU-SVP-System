@@ -1,8 +1,17 @@
 import type { Header, RowData } from '@tanstack/react-table';
-import { ArrowDown, ArrowUp, ChevronsUpDown, Pin, PinOff } from 'lucide-react';
+import {
+    ArrowDown,
+    ArrowUp,
+    ChevronsUpDown,
+    EyeOff,
+    Pin,
+    PinOff,
+    StretchHorizontal,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
+    DropdownMenuCheckboxItem,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuSeparator,
@@ -15,13 +24,23 @@ import { clampColumnSize, DEFAULT_COLUMN_MIN_SIZE } from './utils';
 type Props<TData extends RowData> = {
     header: Header<DataTableFeatures, TData, unknown>;
     title: string;
+    fill: boolean;
+    onFillChange: (value: boolean) => void;
 };
 
-export function DataTableColumnHeader<TData extends RowData>({ header, title }: Props<TData>) {
+export function DataTableColumnHeader<TData extends RowData>({
+    header,
+    title,
+    fill,
+    onFillChange,
+}: Props<TData>) {
     const column = header.column;
     const sorted = column.getIsSorted();
+    const canFill = column.getCanResize();
+    const canPin = column.getCanPin();
+    const canHide = column.getCanHide();
 
-    if (!column.getCanSort() && !column.getCanPin() && !column.getCanHide()) {
+    if (!column.getCanSort() && !canPin && !canHide && !canFill) {
         return <span className="block truncate">{title}</span>;
     }
 
@@ -48,7 +67,7 @@ export function DataTableColumnHeader<TData extends RowData>({ header, title }: 
                 <span className="truncate">{title}</span>
             )}
 
-            {(column.getCanPin() || column.getCanHide()) && (
+            {(canPin || canHide || canFill) && (
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button
@@ -61,7 +80,7 @@ export function DataTableColumnHeader<TData extends RowData>({ header, title }: 
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start">
-                        {column.getCanPin() && (
+                        {canPin && (
                             <>
                                 <DropdownMenuItem
                                     onClick={() => column.pin('start')}
@@ -86,15 +105,24 @@ export function DataTableColumnHeader<TData extends RowData>({ header, title }: 
                                 </DropdownMenuItem>
                             </>
                         )}
-                        {column.getCanPin() && column.getCanHide() && (
-                            <DropdownMenuSeparator />
-                        )}
-                        {column.getCanHide() && (
+                        {canPin && (canHide || canFill) && <DropdownMenuSeparator />}
+                        {canHide && (
                             <DropdownMenuItem
                                 onClick={() => column.toggleVisibility(false)}
                             >
+                                <EyeOff className="size-4" />
                                 Hide column
                             </DropdownMenuItem>
+                        )}
+                        {canHide && canFill && <DropdownMenuSeparator />}
+                        {canFill && (
+                            <DropdownMenuCheckboxItem
+                                checked={fill}
+                                onCheckedChange={(value) => onFillChange(!!value)}
+                            >
+                                <StretchHorizontal className="size-4" />
+                                Fill remaining space
+                            </DropdownMenuCheckboxItem>
                         )}
                     </DropdownMenuContent>
                 </DropdownMenu>
