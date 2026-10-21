@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Budget;
 
 use App\Concerns\FlashesToasts;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ListQueryRequest;
 use App\Models\Department;
 use App\Models\DepartmentBudget;
+use App\Support\ListQuery;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -15,15 +17,28 @@ class DepartmentBudgetController extends Controller
 {
     use FlashesToasts;
 
-    public function index(): Response
+    public function index(ListQueryRequest $request): Response
     {
-        $budgets = DepartmentBudget::query()
-            ->with(['department:id,name,code', 'setBy:id,name'])
-            ->orderByDesc('fiscal_year')
-            ->paginate(20);
+        $budgets = ListQuery::paginate(
+            DepartmentBudget::query()->with(['department:id,name,code', 'setBy:id,name']),
+            $request,
+            [
+                'searchable' => ['department.name', 'department.code', 'fiscal_year'],
+                'sortable' => [
+                    'fiscal_year' => 'fiscal_year',
+                    'allocated_budget' => 'allocated_budget',
+                    'reserved_budget' => 'reserved_budget',
+                    'utilized_budget' => 'utilized_budget',
+                ],
+                'defaultSort' => 'fiscal_year',
+                'defaultDirection' => 'desc',
+                'defaultPerPage' => 15,
+            ],
+        );
 
         return Inertia::render('budget/departments/index', [
             'budgets' => $budgets,
+            'filters' => ListQuery::snapshot($request),
             'departments' => Department::query()->orderBy('name')->get(['id', 'name', 'code']),
             'fiscalYear' => (int) now()->format('Y'),
         ]);

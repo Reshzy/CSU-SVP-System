@@ -381,7 +381,7 @@ export function DataTable<TData extends RowData>({
                                     {headerGroup.headers.map((header) => (
                                         <TableHead
                                             key={header.id}
-                                            className="relative"
+                                            className="relative overflow-hidden"
                                             style={pinnedStyle(header.column)}
                                         >
                                             {header.isPlaceholder
@@ -423,10 +423,13 @@ export function DataTable<TData extends RowData>({
                                             key={cell.id}
                                             style={pinnedStyle(cell.column)}
                                             className={cn(
+                                                'overflow-hidden',
                                                 cell.column.id === 'actions' && 'text-right',
                                             )}
                                         >
-                                            <table.FlexRender cell={cell} />
+                                            <div className="min-w-0 max-w-full overflow-hidden text-ellipsis">
+                                                <table.FlexRender cell={cell} />
+                                            </div>
                                         </TableCell>
                                     ))}
                                 </TableRow>

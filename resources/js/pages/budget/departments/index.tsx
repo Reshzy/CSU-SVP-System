@@ -1,11 +1,10 @@
-import { Head, useForm } from '@inertiajs/react';
-import { flexRender } from '@tanstack/react-table/flex-render';
+import { Head, router, useForm } from '@inertiajs/react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-    getCoreRowModel,
-    legacyCreateColumnHelper,
-    useLegacyTable,
-} from '@tanstack/react-table/legacy';
-import { useMemo, useState } from 'react';
+    createDataTableColumnHelper,
+    DataTable,
+    type TableQueryFilters,
+} from '@/components/data-table';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,14 +28,216 @@ type Props = {
     budgets: Paginated<Budget>;
     departments: Department[];
     fiscalYear: number;
+    filters: TableQueryFilters;
 };
 
-const columnHelper = legacyCreateColumnHelper<Budget>();
+const columnHelper = createDataTableColumnHelper<Budget>();
+
+function DebugBudgetInput({
+    source,
+    field,
+    budgetId,
+    value,
+    onChange,
+}: {
+    source: 'table' | 'create';
+    field: 'allocated_budget' | 'fiscal_year';
+    budgetId?: number;
+    value: string;
+    onChange: (next: string) => void;
+}) {
+    const instanceId = useRef(Math.random().toString(36).slice(2, 8)).current;
+
+    useEffect(() => {
+        // #region agent log
+        fetch('http://127.0.0.1:7914/ingest/e66699f4-b3b7-440d-b82c-30537e1be9fc', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Debug-Session-Id': '6ad2b1',
+            },
+            body: JSON.stringify({
+                sessionId: '6ad2b1',
+                hypothesisId: 'A',
+                location: 'budget/departments/index.tsx:DebugBudgetInput',
+                message: 'input-mount',
+                data: { source, field, budgetId, instanceId, value },
+                timestamp: Date.now(),
+            }),
+        }).catch(() => {});
+        // #endregion
+
+        return () => {
+            // #region agent log
+            fetch('http://127.0.0.1:7914/ingest/e66699f4-b3b7-440d-b82c-30537e1be9fc', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Debug-Session-Id': '6ad2b1',
+                },
+                body: JSON.stringify({
+                    sessionId: '6ad2b1',
+                    hypothesisId: 'A',
+                    location: 'budget/departments/index.tsx:DebugBudgetInput',
+                    message: 'input-unmount',
+                    data: { source, field, budgetId, instanceId },
+                    timestamp: Date.now(),
+                }),
+            }).catch(() => {});
+            // #endregion
+        };
+    }, [source, field, budgetId, instanceId]);
+
+    return (
+        <Input
+            data-debug-input={instanceId}
+            value={value}
+            onFocus={() => {
+                // #region agent log
+                fetch('http://127.0.0.1:7914/ingest/e66699f4-b3b7-440d-b82c-30537e1be9fc', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Debug-Session-Id': '6ad2b1',
+                    },
+                    body: JSON.stringify({
+                        sessionId: '6ad2b1',
+                        hypothesisId: 'C',
+                        location: 'budget/departments/index.tsx:DebugBudgetInput',
+                        message: 'input-focus',
+                        data: { source, field, budgetId, instanceId, value },
+                        timestamp: Date.now(),
+                    }),
+                }).catch(() => {});
+                // #endregion
+            }}
+            onBlur={() => {
+                // #region agent log
+                fetch('http://127.0.0.1:7914/ingest/e66699f4-b3b7-440d-b82c-30537e1be9fc', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Debug-Session-Id': '6ad2b1',
+                    },
+                    body: JSON.stringify({
+                        sessionId: '6ad2b1',
+                        hypothesisId: 'C',
+                        location: 'budget/departments/index.tsx:DebugBudgetInput',
+                        message: 'input-blur',
+                        data: { source, field, budgetId, instanceId, value },
+                        timestamp: Date.now(),
+                    }),
+                }).catch(() => {});
+                // #endregion
+            }}
+            onChange={(event) => {
+                const next = event.target.value;
+                const stillFocused = document.activeElement === event.target;
+                // #region agent log
+                fetch('http://127.0.0.1:7914/ingest/e66699f4-b3b7-440d-b82c-30537e1be9fc', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Debug-Session-Id': '6ad2b1',
+                    },
+                    body: JSON.stringify({
+                        sessionId: '6ad2b1',
+                        hypothesisId: 'D',
+                        location: 'budget/departments/index.tsx:DebugBudgetInput',
+                        message: 'input-change',
+                        data: {
+                            source,
+                            field,
+                            budgetId,
+                            instanceId,
+                            prev: value,
+                            next,
+                            stillFocused,
+                        },
+                        timestamp: Date.now(),
+                    }),
+                }).catch(() => {});
+                // #endregion
+                requestAnimationFrame(() => {
+                    const active = document.activeElement as HTMLElement | null;
+                    // #region agent log
+                    fetch('http://127.0.0.1:7914/ingest/e66699f4-b3b7-440d-b82c-30537e1be9fc', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Debug-Session-Id': '6ad2b1',
+                        },
+                        body: JSON.stringify({
+                            sessionId: '6ad2b1',
+                            hypothesisId: 'A',
+                            location: 'budget/departments/index.tsx:DebugBudgetInput',
+                            message: 'input-after-paint',
+                            data: {
+                                source,
+                                field,
+                                budgetId,
+                                instanceId,
+                                next,
+                                activeDebugId: active?.getAttribute('data-debug-input'),
+                                activeTag: active?.tagName ?? null,
+                            },
+                            timestamp: Date.now(),
+                        }),
+                    }).catch(() => {});
+                    // #endregion
+                });
+                onChange(next);
+            }}
+        />
+    );
+}
+
+function AllocatedBudgetCell({ budget }: { budget: Budget }) {
+    const [value, setValue] = useState(String(budget.allocated_budget));
+
+    useEffect(() => {
+        setValue(String(budget.allocated_budget));
+    }, [budget.allocated_budget]);
+
+    const dirty = value !== String(budget.allocated_budget);
+
+    return (
+        <div className="flex min-w-0 items-center gap-2">
+            <div className="min-w-0 flex-1">
+                <DebugBudgetInput
+                    source="table"
+                    field="allocated_budget"
+                    budgetId={budget.id}
+                    value={value}
+                    onChange={setValue}
+                />
+            </div>
+            <Button
+                size="sm"
+                type="button"
+                disabled={!dirty}
+                onClick={() => {
+                    router.put(
+                        update.url(budget.id),
+                        {
+                            allocated_budget: Number(value),
+                            notes: budget.notes ?? '',
+                        },
+                        { preserveScroll: true },
+                    );
+                }}
+            >
+                Update
+            </Button>
+        </div>
+    );
+}
 
 export default function BudgetDepartmentsIndex({
     budgets,
     departments,
     fiscalYear,
+    filters,
 }: Props) {
     const form = useForm({
         department_id: String(departments[0]?.id ?? ''),
@@ -45,83 +246,61 @@ export default function BudgetDepartmentsIndex({
         notes: '',
     });
 
-    const [edits, setEdits] = useState<
-        Record<number, { allocated_budget: string; notes: string }>
-    >({});
+    const columns = useMemo(() => {
+        // #region agent log
+        fetch('http://127.0.0.1:7914/ingest/e66699f4-b3b7-440d-b82c-30537e1be9fc', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Debug-Session-Id': '6ad2b1',
+            },
+            body: JSON.stringify({
+                sessionId: '6ad2b1',
+                hypothesisId: 'E',
+                location: 'budget/departments/index.tsx:columns',
+                message: 'columns-recreated',
+                data: {
+                    editIds: [],
+                    formAllocated: 'stable-columns',
+                    formYear: 'stable-columns',
+                },
+                timestamp: Date.now(),
+            }),
+        }).catch(() => {});
+        // #endregion
 
-    const columns = useMemo(
-        () => [
+        return [
             columnHelper.accessor((row) => row.department?.name ?? '', {
                 id: 'department',
                 header: 'Department',
+                enableSorting: false,
+                cell: ({ row }) => (
+                    <span className="font-medium">
+                        {row.original.department?.name ?? '—'}
+                    </span>
+                ),
             }),
             columnHelper.accessor('fiscal_year', { header: 'Year' }),
-            columnHelper.display({
-                id: 'allocated',
+            columnHelper.accessor('allocated_budget', {
                 header: 'Allocated',
-                cell: (info) => {
-                    const budget = info.row.original;
-                    const value =
-                        edits[budget.id]?.allocated_budget ??
-                        budget.allocated_budget;
-
-                    return (
-                        <Input
-                            value={value}
-                            onChange={(event) =>
-                                setEdits((current) => ({
-                                    ...current,
-                                    [budget.id]: {
-                                        allocated_budget: event.target.value,
-                                        notes:
-                                            current[budget.id]?.notes ??
-                                            budget.notes ??
-                                            '',
-                                    },
-                                }))
-                            }
-                        />
-                    );
-                },
+                cell: ({ row }) => (
+                    <AllocatedBudgetCell budget={row.original} />
+                ),
             }),
-            columnHelper.accessor('reserved_budget', { header: 'Reserved' }),
-            columnHelper.accessor('utilized_budget', { header: 'Utilized' }),
-            columnHelper.display({
-                id: 'actions',
-                header: 'Actions',
-                cell: (info) => {
-                    const budget = info.row.original;
-                    const draft = edits[budget.id];
-
-                    return (
-                        <Button
-                            size="sm"
-                            type="button"
-                            disabled={!draft}
-                            onClick={() => {
-                                form.transform(() => ({
-                                    allocated_budget: Number(
-                                        draft.allocated_budget,
-                                    ),
-                                    notes: draft.notes,
-                                }));
-                                form.put(update.url(budget.id));
-                            }}
-                        >
-                            Update
-                        </Button>
-                    );
-                },
+            columnHelper.accessor('reserved_budget', {
+                header: 'Reserved',
+                cell: ({ getValue }) => (
+                    <span className="tabular-nums">{getValue()}</span>
+                ),
             }),
-        ],
-        [edits, form],
-    );
-
-    const table = useLegacyTable({
-        data: budgets.data,
-        columns,
-        getCoreRowModel: getCoreRowModel(),
-    });
+            columnHelper.accessor('utilized_budget', {
+                header: 'Utilized',
+                cell: ({ getValue }) => (
+                    <span className="tabular-nums">{getValue()}</span>
+                ),
+            }),
+        ];
+    }, []);
 
     return (
         <>
@@ -166,22 +345,23 @@ export default function BudgetDepartmentsIndex({
                     </div>
                     <div className="space-y-2">
                         <Label>Year</Label>
-                        <Input
+                        <DebugBudgetInput
+                            source="create"
+                            field="fiscal_year"
                             value={form.data.fiscal_year}
-                            onChange={(event) =>
-                                form.setData('fiscal_year', event.target.value)
+                            onChange={(next) =>
+                                form.setData('fiscal_year', next)
                             }
                         />
                     </div>
                     <div className="space-y-2">
                         <Label>Allocated</Label>
-                        <Input
+                        <DebugBudgetInput
+                            source="create"
+                            field="allocated_budget"
                             value={form.data.allocated_budget}
-                            onChange={(event) =>
-                                form.setData(
-                                    'allocated_budget',
-                                    event.target.value,
-                                )
+                            onChange={(next) =>
+                                form.setData('allocated_budget', next)
                             }
                         />
                     </div>
@@ -192,41 +372,17 @@ export default function BudgetDepartmentsIndex({
                     </div>
                 </form>
 
-                <div className="overflow-x-auto rounded-lg border">
-                    <table className="w-full text-sm">
-                        <thead className="bg-muted/50 text-left">
-                            {table.getHeaderGroups().map((headerGroup) => (
-                                <tr key={headerGroup.id}>
-                                    {headerGroup.headers.map((header) => (
-                                        <th
-                                            key={header.id}
-                                            className="px-3 py-2 font-medium"
-                                        >
-                                            {flexRender(
-                                                header.column.columnDef.header,
-                                                header.getContext(),
-                                            )}
-                                        </th>
-                                    ))}
-                                </tr>
-                            ))}
-                        </thead>
-                        <tbody>
-                            {table.getRowModel().rows.map((row) => (
-                                <tr key={row.id} className="border-t">
-                                    {row.getVisibleCells().map((cell) => (
-                                        <td key={cell.id} className="px-3 py-2">
-                                            {flexRender(
-                                                cell.column.columnDef.cell,
-                                                cell.getContext(),
-                                            )}
-                                        </td>
-                                    ))}
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                <DataTable
+                    tableId="budget-departments"
+                    visitUrl={index.url()}
+                    paginated={budgets}
+                    columns={columns}
+                    filters={filters}
+                    searchPlaceholder="Department, code, or year"
+                    initialPinning={{ start: ['department'] }}
+                    emptyMessage="No department budgets yet."
+                    noResultsMessage="No department budgets match the current filters."
+                />
             </div>
         </>
     );

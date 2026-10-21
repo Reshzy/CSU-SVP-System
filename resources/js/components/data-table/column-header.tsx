@@ -21,20 +21,20 @@ export function DataTableColumnHeader<TData extends RowData>({ header, title }: 
     const sorted = column.getIsSorted();
 
     if (!column.getCanSort() && !column.getCanPin() && !column.getCanHide()) {
-        return <span>{title}</span>;
+        return <span className="block truncate">{title}</span>;
     }
 
     return (
-        <div className="flex items-center gap-1">
+        <div className="flex min-w-0 items-center gap-1">
             {column.getCanSort() ? (
                 <Button
                     variant="ghost"
                     size="sm"
-                    className="-ml-2 h-8"
+                    className="-ml-2 h-8 min-w-0"
                     onClick={column.getToggleSortingHandler()}
                     aria-label={`Sort by ${title}`}
                 >
-                    <span>{title}</span>
+                    <span className="truncate">{title}</span>
                     {sorted === 'desc' ? (
                         <ArrowDown className="size-3.5" />
                     ) : sorted === 'asc' ? (
@@ -44,7 +44,7 @@ export function DataTableColumnHeader<TData extends RowData>({ header, title }: 
                     )}
                 </Button>
             ) : (
-                <span>{title}</span>
+                <span className="truncate">{title}</span>
             )}
 
             {(column.getCanPin() || column.getCanHide()) && (
