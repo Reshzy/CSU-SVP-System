@@ -38,6 +38,10 @@ export type DataTableBulkAction<TData> = {
     variant?: 'default' | 'destructive';
 };
 
+export type DataTableColumnMeta = {
+    fill?: boolean;
+};
+
 export type DataTableColumn<TData extends RowData, TValue = any> = ColumnDef<
     DataTableFeatures,
     TData,

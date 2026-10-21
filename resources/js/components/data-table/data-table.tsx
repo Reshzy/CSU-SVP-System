@@ -5,7 +5,7 @@ import {
     type SortingState,
     type Updater,
 } from '@tanstack/react-table';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -37,7 +37,12 @@ import type {
 import { PAGE_SIZES } from './types';
 import { useInertiaTable } from './use-inertia-table';
 import { useTablePreferences } from './use-table-preferences';
-import { asFilterString, pinnedStyle } from './utils';
+import {
+    asFilterString,
+    computeColumnLayout,
+    DEFAULT_COLUMN_MIN_SIZE,
+    pinnedStyle,
+} from './utils';
 
 type DataTableProps<TData extends RowData> = {
     tableId: string;
@@ -204,11 +209,15 @@ export function DataTable<TData extends RowData>({
     );
     const pageIndex = Math.max(0, (Number(query.page) || paginated?.current_page || 1) - 1);
 
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const [containerWidth, setContainerWidth] = useState(0);
+
     const table = useTable({
         features: dataTableFeatures,
         data: sourceRows,
         columns: tableColumns,
         getRowId,
+        defaultColumn: { minSize: DEFAULT_COLUMN_MIN_SIZE },
         enableMultiSort: false,
         enableSortingRemoval: true,
         columnResizeMode: 'onChange',
@@ -255,6 +264,37 @@ export function DataTable<TData extends RowData>({
             });
         },
     });
+
+    useLayoutEffect(() => {
+        const element = scrollRef.current;
+
+        if (!element) {
+            return;
+        }
+
+        const updateWidth = () => {
+            setContainerWidth(element.clientWidth);
+        };
+
+        updateWidth();
+
+        const observer = new ResizeObserver(updateWidth);
+        observer.observe(element);
+
+        return () => observer.disconnect();
+    }, []);
+
+    const layout = useMemo(
+        () => computeColumnLayout(table.getVisibleLeafColumns(), containerWidth),
+        [
+            containerWidth,
+            preferences.columnPinning,
+            preferences.columnSizing,
+            preferences.columnVisibility,
+            table,
+            tableColumns,
+        ],
+    );
 
     function updateQuery(patch: TableQueryFilters, options?: { debounceMs?: number }) {
         const next = {
@@ -369,11 +409,11 @@ export function DataTable<TData extends RowData>({
                     </div>
                 )}
 
-                <div className="max-h-[min(70vh,40rem)] overflow-auto">
+                <div ref={scrollRef} className="max-h-[min(70vh,40rem)] overflow-auto">
                     <Table
                         className="table-fixed"
                         containerClassName="overflow-visible"
-                        style={{ width: table.getTotalSize() }}
+                        style={{ width: layout.tableWidth }}
                     >
                         <TableHeader className="bg-background sticky top-0 z-20">
                             {table.getHeaderGroups().map((headerGroup) => (
@@ -382,7 +422,7 @@ export function DataTable<TData extends RowData>({
                                         <TableHead
                                             key={header.id}
                                             className="relative overflow-hidden"
-                                            style={pinnedStyle(header.column)}
+                                            style={pinnedStyle(header.column, layout)}
                                         >
                                             {header.isPlaceholder
                                                 ? null
@@ -421,7 +461,7 @@ export function DataTable<TData extends RowData>({
                                     {row.getVisibleCells().map((cell) => (
                                         <TableCell
                                             key={cell.id}
-                                            style={pinnedStyle(cell.column)}
+                                            style={pinnedStyle(cell.column, layout)}
                                             className={cn(
                                                 'overflow-hidden',
                                                 cell.column.id === 'actions' && 'text-right',

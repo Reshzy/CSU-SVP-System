@@ -4,6 +4,7 @@ export { humanizeStatus } from './utils';
 export type {
     DataTableBulkAction,
     DataTableColumn,
+    DataTableColumnMeta,
     DataTableFilterDef,
     DataTableRowAction,
     TableQueryFilters,

@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import type { DataTableFeatures } from './features';
+import { clampColumnSize, DEFAULT_COLUMN_MIN_SIZE } from './utils';
 
 type Props<TData extends RowData> = {
     header: Header<DataTableFeatures, TData, unknown>;
@@ -116,9 +117,10 @@ export function DataTableColumnHeader<TData extends RowData>({ header, title }: 
 
                         event.preventDefault();
                         const delta = event.key === 'ArrowRight' ? 16 : -16;
-                        const next = Math.max(
-                            column.columnDef.minSize ?? 40,
+                        const next = clampColumnSize(
                             column.getSize() + delta,
+                            column.columnDef.minSize ?? DEFAULT_COLUMN_MIN_SIZE,
+                            column.columnDef.maxSize,
                         );
                         header.getContext().table.setColumnSizing((current) => ({
                             ...current,

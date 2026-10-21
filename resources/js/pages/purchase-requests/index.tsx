@@ -52,7 +52,11 @@ export default function PurchaseRequestIndex({
                     </Link>
                 ),
             }),
-            columnHelper.accessor('pr_title', { header: 'Title' }),
+            columnHelper.accessor('pr_title', {
+                header: 'Title',
+                minSize: 180,
+                fill: true,
+            }),
             columnHelper.accessor('status', {
                 header: 'Status',
                 cell: ({ getValue }) => (

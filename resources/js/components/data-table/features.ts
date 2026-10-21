@@ -15,6 +15,7 @@ import {
     sortFn_alphanumeric,
     tableFeatures,
 } from '@tanstack/react-table';
+import type { DataTableColumnMeta } from './types';
 
 export const dataTableFeatures = tableFeatures({
     columnVisibilityFeature,
@@ -35,6 +36,7 @@ export const dataTableFeatures = tableFeatures({
     sortFns: {
         alphanumeric: sortFn_alphanumeric,
     },
+    columnMeta: {} as DataTableColumnMeta,
 });
 
 export type DataTableFeatures = typeof dataTableFeatures;
