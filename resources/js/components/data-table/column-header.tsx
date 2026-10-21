@@ -121,7 +121,7 @@ export function DataTableColumnHeader<TData extends RowData>({
                                 onCheckedChange={(value) => onFillChange(!!value)}
                             >
                                 <StretchHorizontal className="size-4" />
-                                Fill remaining space
+                                Expand
                             </DropdownMenuCheckboxItem>
                         )}
                     </DropdownMenuContent>
