@@ -4,70 +4,53 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\DepartmentBudget;
-use App\Services\PpmpQuarterlyTracker;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class BudgetCheckController extends Controller
 {
-    public function check(Request $request, PpmpQuarterlyTracker $tracker): JsonResponse
+    public function check(Request $request): JsonResponse
     {
-        $user = $request->user();
+        $validated = $request->validate([
+            'department_id' => ['nullable', 'integer', 'exists:departments,id'],
+            'fiscal_year' => ['nullable', 'integer', 'min:2000', 'max:2100'],
+        ]);
 
-        if ($user->department_id === null) {
-            return response()->json([
-                'success' => false,
-                'message' => 'User is not assigned to a department',
-            ], 400);
-        }
+        $departmentId = (int) ($validated['department_id'] ?? $request->user()->department_id);
+        $fiscalYear = (int) ($validated['fiscal_year'] ?? now()->year);
 
-        $fiscalYear = (int) $request->input('fiscal_year', $tracker->currentFiscalYear());
-        $budget = DepartmentBudget::getOrCreateForDepartment($user->department_id, $fiscalYear);
+        $budget = DepartmentBudget::getOrCreateForDepartment($departmentId, $fiscalYear);
 
         return response()->json([
-            'success' => true,
-            'data' => [
-                'department_id' => $user->department_id,
-                'fiscal_year' => $fiscalYear,
-                'allocated_budget' => (float) $budget->allocated_budget,
-                'utilized_budget' => (float) $budget->utilized_budget,
-                'reserved_budget' => (float) $budget->reserved_budget,
-                'available_budget' => $budget->getAvailableBudget(),
-                'utilization_percentage' => $budget->getUtilizationPercentage(),
-            ],
+            'department_id' => $departmentId,
+            'fiscal_year' => $fiscalYear,
+            'allocated_budget' => (float) $budget->allocated_budget,
+            'utilized_budget' => (float) $budget->utilized_budget,
+            'reserved_budget' => (float) $budget->reserved_budget,
+            'available_budget' => $budget->availableBudget(),
+            'committed_budget' => $budget->committedBudget(),
         ]);
     }
 
-    public function validateAmount(Request $request, PpmpQuarterlyTracker $tracker): JsonResponse
+    public function validateAmount(Request $request): JsonResponse
     {
-        $user = $request->user();
-
-        if ($user->department_id === null) {
-            return response()->json([
-                'success' => false,
-                'message' => 'User is not assigned to a department',
-            ], 400);
-        }
-
         $validated = $request->validate([
+            'department_id' => ['nullable', 'integer', 'exists:departments,id'],
+            'fiscal_year' => ['nullable', 'integer', 'min:2000', 'max:2100'],
             'amount' => ['required', 'numeric', 'min:0'],
-            'fiscal_year' => ['nullable', 'integer', 'min:2020', 'max:2100'],
         ]);
 
-        $fiscalYear = (int) ($validated['fiscal_year'] ?? $tracker->currentFiscalYear());
+        $departmentId = (int) ($validated['department_id'] ?? $request->user()->department_id);
+        $fiscalYear = (int) ($validated['fiscal_year'] ?? now()->year);
         $amount = (float) $validated['amount'];
-        $budget = DepartmentBudget::getOrCreateForDepartment($user->department_id, $fiscalYear);
-        $availableBudget = $budget->getAvailableBudget();
-        $canReserve = $budget->canReserve($amount);
+
+        $budget = DepartmentBudget::getOrCreateForDepartment($departmentId, $fiscalYear);
+        $available = $budget->availableBudget();
 
         return response()->json([
-            'success' => true,
-            'data' => [
-                'can_reserve' => $canReserve,
-                'requested_amount' => $amount,
-                'available_budget' => $availableBudget,
-                'shortage' => $canReserve ? 0 : ($amount - $availableBudget),
-            ],
+            'valid' => $available >= $amount,
+            'available_budget' => $available,
+            'requested_amount' => $amount,
         ]);
     }
 }

@@ -3,164 +3,113 @@
 namespace App\Http\Controllers\Ceo;
 
 use App\Concerns\FlashesToasts;
-use App\Enums\PurchaseRequestStatus;
-use App\Enums\WorkflowStepName;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Ceo\DecidePurchaseRequestRequest;
 use App\Models\PurchaseRequest;
-use App\Models\User;
 use App\Notifications\PurchaseRequestStatusUpdated;
 use App\Services\BacResolutionService;
 use App\Services\PurchaseRequestActivityLogger;
 use App\Services\WorkflowRouter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
-use Throwable;
 
 class PurchaseRequestController extends Controller
 {
     use FlashesToasts;
 
-    public function __construct(
-        private WorkflowRouter $workflowRouter,
-        private PurchaseRequestActivityLogger $activityLogger,
-        private BacResolutionService $bacResolutionService,
-    ) {}
-
-    public function index(Request $request): Response
+    public function index(): Response
     {
-        $status = PurchaseRequestStatus::tryFrom((string) $request->query('status'))
-            ?? PurchaseRequestStatus::CeoApproval;
-
-        $requests = PurchaseRequest::query()
-            ->where('is_archived', false)
-            ->where('status', $status)
+        $purchaseRequests = PurchaseRequest::query()
             ->with(['department:id,name,code', 'requester:id,name'])
-            ->latest()
-            ->paginate(15)
-            ->withQueryString();
-
-        $statusCounts = PurchaseRequest::query()
+            ->where('status', 'ceo_approval')
             ->where('is_archived', false)
-            ->selectRaw('status, count(*) as total')
-            ->groupBy('status')
-            ->pluck('total', 'status');
+            ->latest()
+            ->paginate(20);
 
         return Inertia::render('ceo/purchase-requests/index', [
-            'requests' => $requests,
-            'filters' => ['status' => $status->value],
-            'statusCounts' => $statusCounts,
+            'purchaseRequests' => $purchaseRequests,
         ]);
     }
 
     public function show(PurchaseRequest $purchaseRequest): Response
     {
-        Gate::authorize('view', $purchaseRequest);
+        abort_unless($purchaseRequest->status === 'ceo_approval' || filled($purchaseRequest->resolution_number), 403);
 
-        $purchaseRequest->load([
-            'department:id,name,code',
-            'requester:id,name',
-            'items' => fn ($query) => $query->orderBy('id'),
-        ]);
+        $purchaseRequest->load(['department', 'requester', 'items', 'documents', 'activities.user:id,name']);
 
         return Inertia::render('ceo/purchase-requests/show', [
             'purchaseRequest' => $purchaseRequest,
-            'allowedActions' => $purchaseRequest->allowedCeoActions(),
+            'statusLabel' => $purchaseRequest->statusLabel(),
         ]);
     }
 
-    public function update(DecidePurchaseRequestRequest $request, PurchaseRequest $purchaseRequest): RedirectResponse
-    {
-        $decision = $request->validated('decision');
-        $this->assertActionAllowed($purchaseRequest, $decision);
+    public function update(
+        Request $request,
+        PurchaseRequest $purchaseRequest,
+        BacResolutionService $resolutionService,
+        WorkflowRouter $workflowRouter,
+        PurchaseRequestActivityLogger $activityLogger,
+    ): RedirectResponse {
+        abort_unless($purchaseRequest->status === 'ceo_approval', 403);
 
-        DB::transaction(function () use ($request, $purchaseRequest, $decision): void {
-            $userId = $request->user()->id;
+        $validated = $request->validate([
+            'decision' => ['required', 'string', 'in:approve,reject'],
+            'rejection_reason' => ['nullable', 'string'],
+        ]);
 
-            if ($decision === 'approve') {
-                $this->approve($purchaseRequest, $userId);
-            } else {
-                $purchaseRequest->forceFill([
-                    'status' => PurchaseRequestStatus::Rejected,
-                    'current_handler_id' => $userId,
-                    'rejected_by' => $userId,
-                    'rejection_reason' => $request->validated('rejection_reason'),
-                    'rejected_at' => now(),
-                    'status_updated_at' => now(),
-                ])->save();
-            }
-        });
+        $previousStatus = $purchaseRequest->status;
 
-        if ($decision === 'approve') {
-            try {
-                $actor = $request->user();
+        if ($validated['decision'] === 'reject') {
+            $purchaseRequest->fill([
+                'status' => 'rejected',
+                'rejection_reason' => $validated['rejection_reason'] ?? 'Deferred by Executive Officer',
+                'rejected_by' => $request->user()->id,
+                'rejected_at' => now(),
+            ])->save();
 
-                if ($actor instanceof User) {
-                    $this->bacResolutionService->generateResolution($purchaseRequest, $actor);
-                }
-            } catch (Throwable $e) {
-                Log::error('Failed to generate BAC resolution for PR: '.($purchaseRequest->pr_number ?? $purchaseRequest->id), [
-                    'error' => $e->getMessage(),
-                ]);
-            }
-
-            $this->workflowRouter->createPendingForRole(
+            $activityLogger->log(
                 $purchaseRequest,
-                WorkflowStepName::BacEvaluation->value,
-                'BAC Secretariat',
+                'rejected',
+                'Deferred by Executive Officer.',
+                oldValue: ['status' => $previousStatus],
+                newValue: ['status' => 'rejected'],
+            );
+        } else {
+            $purchaseRequest->fill([
+                'status' => 'bac_evaluation',
+                'procurement_method' => 'small_value_procurement',
+                'procurement_method_set_at' => now(),
+                'procurement_method_set_by' => $request->user()->id,
+                'resolution_number' => $purchaseRequest->resolution_number ?: PurchaseRequest::generateNextResolutionNumber(),
+                'approved_at' => now(),
+            ])->save();
+
+            $resolutionService->generateResolution($purchaseRequest);
+
+            $workflowRouter->createPendingForRole($purchaseRequest, 'bac_evaluation', 'BAC Secretariat');
+
+            $activityLogger->log(
+                $purchaseRequest,
+                'approved',
+                'Approved by Executive Officer for BAC evaluation.',
+                oldValue: ['status' => $previousStatus],
+                newValue: [
+                    'status' => $purchaseRequest->status,
+                    'procurement_method' => $purchaseRequest->procurement_method,
+                    'resolution_number' => $purchaseRequest->resolution_number,
+                ],
             );
         }
 
-        $this->notifyRequester($purchaseRequest);
+        $purchaseRequest->requester?->notify(new PurchaseRequestStatusUpdated($purchaseRequest, $previousStatus));
 
-        $this->toast($decision === 'approve'
-            ? "Approved {$purchaseRequest->pr_number} for BAC evaluation."
-            : "Deferred {$purchaseRequest->pr_number}.");
-
-        return redirect()->route('ceo.purchase-requests.show', $purchaseRequest);
-    }
-
-    private function approve(PurchaseRequest $purchaseRequest, int $userId): void
-    {
-        $purchaseRequest->forceFill([
-            'status' => PurchaseRequestStatus::BacEvaluation,
-            'procurement_method' => 'small_value_procurement',
-            'procurement_method_set_at' => now(),
-            'procurement_method_set_by' => $userId,
-            'resolution_number' => $purchaseRequest->resolution_number ?: PurchaseRequest::generateNextResolutionNumber(),
-            'current_handler_id' => $userId,
-            'approved_at' => now(),
-            'status_updated_at' => now(),
-        ])->save();
-
-        $this->activityLogger->logApproved(
-            $purchaseRequest,
-            'Approved for BAC evaluation with Small Value Procurement',
-            $userId,
+        $this->toast(
+            $validated['decision'] === 'approve'
+                ? "Purchase request {$purchaseRequest->pr_number} sent to BAC."
+                : 'Purchase request deferred.',
         );
-    }
 
-    private function assertActionAllowed(PurchaseRequest $purchaseRequest, string $action): void
-    {
-        if (! in_array($action, $purchaseRequest->allowedCeoActions(), true)) {
-            throw ValidationException::withMessages([
-                'decision' => 'That action is not available for the current status.',
-            ]);
-        }
-    }
-
-    private function notifyRequester(PurchaseRequest $purchaseRequest): void
-    {
-        $purchaseRequest->refresh();
-        $purchaseRequest->loadMissing('requester');
-        $purchaseRequest->requester?->notify(
-            (new PurchaseRequestStatusUpdated($purchaseRequest))->afterCommit(),
-        );
+        return redirect()->route('ceo.purchase-requests.index');
     }
 }

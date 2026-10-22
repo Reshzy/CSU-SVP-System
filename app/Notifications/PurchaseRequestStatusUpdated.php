@@ -12,7 +12,10 @@ class PurchaseRequestStatusUpdated extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(public PurchaseRequest $purchaseRequest) {}
+    public function __construct(
+        public PurchaseRequest $purchaseRequest,
+        public string $previousStatus,
+    ) {}
 
     /**
      * @return list<string>
@@ -24,15 +27,11 @@ class PurchaseRequestStatusUpdated extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
-        $statusLabel = $this->purchaseRequest->status->label();
+        $status = $this->purchaseRequest->statusLabel();
 
         return (new MailMessage)
-            ->subject('Purchase Request '.$this->purchaseRequest->pr_number.' status updated')
-            ->greeting('Hello,')
-            ->line('The status of your purchase request has changed.')
-            ->line('PR Number: '.$this->purchaseRequest->pr_number)
-            ->line('Current status: '.$statusLabel)
-            ->action('View request', url(route('purchase-requests.show', $this->purchaseRequest)))
-            ->line('Thank you.');
+            ->subject("Purchase request {$this->purchaseRequest->pr_number} updated")
+            ->line("Your purchase request {$this->purchaseRequest->pr_number} is now: {$status}.")
+            ->action('View purchase request', url('/purchase-requests/'.$this->purchaseRequest->id));
     }
 }

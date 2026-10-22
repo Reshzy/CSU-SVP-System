@@ -2,156 +2,161 @@
 
 namespace App\Observers;
 
-use App\Enums\PurchaseRequestStatus;
+use App\Models\DepartmentBudget;
 use App\Models\PurchaseRequest;
 use App\Services\PpmpQuarterlyTracker;
 use App\Services\PurchaseRequestActivityLogger;
 use Illuminate\Support\Facades\Log;
-use Throwable;
 
 class PurchaseRequestObserver
 {
-    public function __construct(private PurchaseRequestActivityLogger $activityLogger) {}
+    public function __construct(
+        private PpmpQuarterlyTracker $quarterlyTracker,
+        private PurchaseRequestActivityLogger $activityLogger,
+    ) {}
 
-    /**
-     * Stamp the current PPMP quarter before the row is inserted.
-     */
     public function creating(PurchaseRequest $purchaseRequest): void
     {
         if ($purchaseRequest->pr_quarter === null) {
-            $purchaseRequest->pr_quarter = app(PpmpQuarterlyTracker::class)->currentQuarter();
+            $purchaseRequest->pr_quarter = $this->quarterlyTracker->currentQuarter();
+        }
+
+        if (blank($purchaseRequest->pr_number)) {
+            $purchaseRequest->pr_number = PurchaseRequest::generateNextPrNumber();
+        }
+
+        if ($purchaseRequest->status_updated_at === null) {
+            $purchaseRequest->status_updated_at = now();
         }
     }
 
-    /**
-     * Log creation. Non-draft rows reserve the department envelope from the
-     * stored estimated total (items are not written yet) and log submission.
-     */
     public function created(PurchaseRequest $purchaseRequest): void
     {
-        try {
-            $this->activityLogger->logCreation($purchaseRequest, $purchaseRequest->requester_id);
-        } catch (Throwable $e) {
-            Log::error('Failed to log PR creation activity: '.($purchaseRequest->pr_number ?? $purchaseRequest->id), [
-                'error' => $e->getMessage(),
-            ]);
-        }
+        $this->activityLogger->log(
+            $purchaseRequest,
+            'created',
+            "Purchase request {$purchaseRequest->pr_number} created.",
+            newValue: ['status' => $purchaseRequest->status],
+        );
 
-        if ($purchaseRequest->status === PurchaseRequestStatus::Draft) {
-            return;
-        }
+        if ($purchaseRequest->status !== 'draft') {
+            $this->reserveBudget($purchaseRequest);
 
-        try {
-            $purchaseRequest->reserveDepartmentBudget();
-
-            if (in_array($purchaseRequest->status, [
-                PurchaseRequestStatus::SupplyOfficeReview,
-                PurchaseRequestStatus::Submitted,
-            ], true)) {
-                $this->activityLogger->logSubmission($purchaseRequest, $purchaseRequest->requester_id);
-            }
-        } catch (Throwable $e) {
-            Log::error('Failed to reserve budget for PR: '.($purchaseRequest->pr_number ?? $purchaseRequest->id), [
-                'error' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    public function updated(PurchaseRequest $purchaseRequest): void
-    {
-        if ($purchaseRequest->wasChanged('status')) {
-            $oldStatus = $purchaseRequest->getOriginal('status');
-            $old = $oldStatus instanceof PurchaseRequestStatus
-                ? $oldStatus
-                : PurchaseRequestStatus::from((string) $oldStatus);
-
-            try {
-                $this->activityLogger->logStatusChange($purchaseRequest, $old, $purchaseRequest->status);
-
-                if ($purchaseRequest->status === PurchaseRequestStatus::ReturnedBySupply && $purchaseRequest->return_remarks) {
-                    $this->activityLogger->logReturn(
-                        $purchaseRequest,
-                        $purchaseRequest->return_remarks,
-                        $purchaseRequest->returned_by,
-                    );
+            if (in_array($purchaseRequest->status, ['supply_office_review', 'submitted'], true)) {
+                if ($purchaseRequest->submitted_at === null) {
+                    $purchaseRequest->forceFill(['submitted_at' => now()])->saveQuietly();
                 }
 
-                if ($purchaseRequest->status === PurchaseRequestStatus::Rejected && $purchaseRequest->rejection_reason) {
-                    $this->activityLogger->logRejection(
-                        $purchaseRequest,
-                        $purchaseRequest->rejection_reason,
-                        $purchaseRequest->rejected_by,
-                    );
-                }
-            } catch (Throwable $e) {
-                Log::error('Failed to log PR status change activity: '.($purchaseRequest->pr_number ?? $purchaseRequest->id), [
-                    'error' => $e->getMessage(),
-                ]);
-            }
-
-            try {
-                if ($old === PurchaseRequestStatus::Draft && $purchaseRequest->status === PurchaseRequestStatus::Submitted) {
-                    $purchaseRequest->reserveDepartmentBudget();
-                }
-
-                if ($purchaseRequest->status === PurchaseRequestStatus::Completed) {
-                    $purchaseRequest->utilizeDepartmentBudget();
-                }
-
-                if (in_array($purchaseRequest->status, [
-                    PurchaseRequestStatus::Cancelled,
-                    PurchaseRequestStatus::Rejected,
-                    PurchaseRequestStatus::ReturnedBySupply,
-                ], true) && $old !== PurchaseRequestStatus::Draft) {
-                    $purchaseRequest->releaseReservedBudget();
-                }
-            } catch (Throwable $e) {
-                Log::error('Failed to update budget for PR: '.($purchaseRequest->pr_number ?? $purchaseRequest->id), [
-                    'old_status' => $old->value,
-                    'new_status' => $purchaseRequest->status->value,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        if ($purchaseRequest->wasChanged('current_handler_id') && $purchaseRequest->current_handler_id) {
-            try {
-                $this->activityLogger->logAssignment($purchaseRequest, $purchaseRequest->current_handler_id);
-            } catch (Throwable $e) {
-                Log::error('Failed to log PR assignment activity: '.($purchaseRequest->pr_number ?? $purchaseRequest->id), [
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        if ($purchaseRequest->wasChanged('current_step_notes') && $purchaseRequest->current_step_notes) {
-            try {
-                $this->activityLogger->logNotesAdded($purchaseRequest, $purchaseRequest->current_step_notes);
-            } catch (Throwable $e) {
-                Log::error('Failed to log PR notes activity: '.($purchaseRequest->pr_number ?? $purchaseRequest->id), [
-                    'error' => $e->getMessage(),
-                ]);
+                $this->activityLogger->log(
+                    $purchaseRequest,
+                    'submitted',
+                    "Purchase request {$purchaseRequest->pr_number} submitted.",
+                    newValue: ['status' => $purchaseRequest->status],
+                );
             }
         }
     }
 
-    public function deleted(PurchaseRequest $purchaseRequest): void
+    public function updating(PurchaseRequest $purchaseRequest): void
     {
-        if (in_array($purchaseRequest->status, [
-            PurchaseRequestStatus::Draft,
-            PurchaseRequestStatus::Completed,
-            PurchaseRequestStatus::Cancelled,
-            PurchaseRequestStatus::Rejected,
-        ], true)) {
+        if (! $purchaseRequest->isDirty('status')) {
             return;
         }
 
-        try {
-            $purchaseRequest->releaseReservedBudget();
-        } catch (Throwable $e) {
-            Log::error('Failed to release budget for deleted PR: '.($purchaseRequest->pr_number ?? $purchaseRequest->id), [
-                'error' => $e->getMessage(),
+        $oldStatus = $purchaseRequest->getOriginal('status');
+        $newStatus = $purchaseRequest->status;
+
+        $purchaseRequest->status_updated_at = now();
+
+        $this->activityLogger->log(
+            $purchaseRequest,
+            'status_changed',
+            "Status changed from {$oldStatus} to {$newStatus}.",
+            oldValue: ['status' => $oldStatus],
+            newValue: ['status' => $newStatus],
+        );
+
+        if ($oldStatus === 'draft' && in_array($newStatus, ['submitted', 'supply_office_review'], true)) {
+            $this->reserveBudget($purchaseRequest);
+        }
+
+        if ($newStatus === 'completed') {
+            $this->utilizeBudget($purchaseRequest);
+        }
+
+        if (
+            in_array($newStatus, ['cancelled', 'rejected', 'returned_by_supply'], true)
+            && $oldStatus !== 'draft'
+        ) {
+            $this->releaseBudget($purchaseRequest);
+        }
+    }
+
+    private function reserveBudget(PurchaseRequest $purchaseRequest): void
+    {
+        $amount = $this->amountFor($purchaseRequest);
+
+        if ($amount <= 0) {
+            return;
+        }
+
+        $budget = DepartmentBudget::getOrCreateForDepartment(
+            $purchaseRequest->department_id,
+            (int) ($purchaseRequest->created_at?->year ?? now()->year),
+        );
+
+        if (! $budget->reserveBudget($amount)) {
+            Log::error('Failed to reserve department budget for purchase request.', [
+                'purchase_request_id' => $purchaseRequest->id,
+                'pr_number' => $purchaseRequest->pr_number,
+                'amount' => $amount,
+                'available' => $budget->availableBudget(),
             ]);
         }
+    }
+
+    private function utilizeBudget(PurchaseRequest $purchaseRequest): void
+    {
+        $amount = $this->amountFor($purchaseRequest);
+
+        if ($amount <= 0) {
+            return;
+        }
+
+        $budget = DepartmentBudget::getOrCreateForDepartment(
+            $purchaseRequest->department_id,
+            (int) ($purchaseRequest->created_at?->year ?? now()->year),
+        );
+
+        $budget->utilizeBudget($amount);
+    }
+
+    private function releaseBudget(PurchaseRequest $purchaseRequest): void
+    {
+        $amount = $this->amountFor($purchaseRequest);
+
+        if ($amount <= 0) {
+            return;
+        }
+
+        $budget = DepartmentBudget::getOrCreateForDepartment(
+            $purchaseRequest->department_id,
+            (int) ($purchaseRequest->created_at?->year ?? now()->year),
+        );
+
+        $budget->releaseReservedBudget($amount);
+    }
+
+    private function amountFor(PurchaseRequest $purchaseRequest): float
+    {
+        $purchaseRequest->loadMissing('items');
+
+        $fromItems = $purchaseRequest->calculateTotalCost();
+
+        if ($fromItems > 0) {
+            return $fromItems;
+        }
+
+        return (float) $purchaseRequest->estimated_total;
     }
 }

@@ -6,10 +6,11 @@ use App\Concerns\FlashesToasts;
 use App\Enums\ApprovalStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Ceo\RejectionRequest;
+use App\Http\Requests\ListQueryRequest;
 use App\Models\User;
+use App\Support\ListQuery;
 use App\Support\PositionRoleMap;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -21,27 +22,33 @@ class UserManagementController extends Controller
 {
     use FlashesToasts;
 
-    public function index(Request $request): Response
+    public function index(ListQueryRequest $request): Response
     {
         $status = ApprovalStatus::tryFrom((string) $request->query('status')) ?? ApprovalStatus::Pending;
 
-        $users = User::query()
-            ->with(['department:id,name,code', 'position:id,name'])
-            ->where('approval_status', $status)
-            ->when($request->filled('search'), function ($query) use ($request): void {
-                $search = '%'.$request->string('search')->trim().'%';
-                $query->where(fn ($q) => $q->where('name', 'like', $search)->orWhere('email', 'like', $search));
-            })
-            ->orderByDesc('created_at')
-            ->paginate(15)
-            ->withQueryString();
+        $users = ListQuery::paginate(
+            User::query()
+                ->with(['department:id,name,code', 'position:id,name'])
+                ->where('approval_status', $status),
+            $request,
+            [
+                'searchable' => ['name', 'email'],
+                'sortable' => [
+                    'name' => 'name',
+                    'email' => 'email',
+                    'created_at' => 'created_at',
+                    'approval_status' => 'approval_status',
+                ],
+                'dateColumn' => 'created_at',
+                'defaultSort' => 'created_at',
+                'defaultDirection' => 'desc',
+                'defaultPerPage' => 15,
+            ],
+        );
 
         return Inertia::render('ceo/users/index', [
             'users' => $users,
-            'filters' => [
-                'status' => $status->value,
-                'search' => $request->string('search')->value(),
-            ],
+            'filters' => ListQuery::snapshot($request, ['status' => $status->value]),
             'statusCounts' => User::query()
                 ->select('approval_status', DB::raw('count(*) as total'))
                 ->groupBy('approval_status')

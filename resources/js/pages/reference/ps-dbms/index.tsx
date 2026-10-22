@@ -1,32 +1,26 @@
-import { Form, Head, Link } from '@inertiajs/react';
-import { Search, Upload } from 'lucide-react';
+import { Head, Link } from '@inertiajs/react';
+import { Upload } from 'lucide-react';
+import { useMemo } from 'react';
+import {
+    createDataTableColumnHelper,
+    DataTable,
+    type TableQueryFilters,
+} from '@/components/data-table';
 import Heading from '@/components/heading';
-import { PaginationNav } from '@/components/pagination-nav';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
 import { importMethod, index } from '@/routes/ps-dbms';
 import type { AppItem, Paginated } from '@/types';
 
 type Props = {
     appItems: Paginated<AppItem>;
-    filters: {
-        fiscal_year: number;
-        category: string | null;
-        search: string | null;
-    };
+    filters: TableQueryFilters & { fiscal_year: number; category: string | null };
     categories: string[];
     fiscalYears: number[];
     stats: { total: number; active: number };
 };
+
+const columnHelper = createDataTableColumnHelper<AppItem>();
 
 export default function PsDbmsIndex({
     appItems,
@@ -35,6 +29,40 @@ export default function PsDbmsIndex({
     fiscalYears,
     stats,
 }: Props) {
+    const columns = useMemo(
+        () => [
+            columnHelper.accessor('item_code', {
+                header: 'Code',
+                cell: ({ getValue }) => (
+                    <span className="font-mono text-xs">{getValue()}</span>
+                ),
+            }),
+            columnHelper.accessor('item_name', {
+                header: 'Item',
+                cell: ({ getValue }) => (
+                    <span className="font-medium">{getValue()}</span>
+                ),
+            }),
+            columnHelper.accessor('category', {
+                header: 'Category',
+                cell: ({ getValue }) => (
+                    <span className="text-muted-foreground text-xs">
+                        {getValue()}
+                    </span>
+                ),
+            }),
+            columnHelper.accessor('unit_of_measure', { header: 'Unit' }),
+            columnHelper.accessor('unit_price', {
+                header: 'Unit price',
+                cell: ({ getValue }) =>
+                    getValue() ?? <Badge variant="secondary">Unpriced</Badge>,
+            }),
+        ],
+        [],
+    );
+
+    const years = fiscalYears.length > 0 ? fiscalYears : [filters.fiscal_year];
+
     return (
         <>
             <Head title="PS-DBMS catalog" />
@@ -53,109 +81,33 @@ export default function PsDbmsIndex({
                     </Button>
                 </div>
 
-                <Form
-                    action={index().url}
-                    method="get"
-                    className="flex flex-wrap gap-2"
-                >
-                    <Input
-                        name="search"
-                        type="search"
-                        placeholder="Item name or code"
-                        defaultValue={filters.search ?? ''}
-                        className="w-56"
-                    />
-                    <select
-                        name="fiscal_year"
-                        defaultValue={filters.fiscal_year}
-                        className="border-input bg-background h-9 rounded-md border px-3 text-sm"
-                    >
-                        {(fiscalYears.length > 0
-                            ? fiscalYears
-                            : [filters.fiscal_year]
-                        ).map((year) => (
-                            <option key={year} value={year}>
-                                {year}
-                            </option>
-                        ))}
-                    </select>
-                    <select
-                        name="category"
-                        defaultValue={filters.category ?? ''}
-                        className="border-input bg-background h-9 rounded-md border px-3 text-sm"
-                    >
-                        <option value="">All categories</option>
-                        {categories.map((category) => (
-                            <option key={category} value={category}>
-                                {category}
-                            </option>
-                        ))}
-                    </select>
-                    <Button type="submit" variant="outline" size="icon">
-                        <Search className="size-4" />
-                        <span className="sr-only">Search</span>
-                    </Button>
-                </Form>
-
-                <div className="rounded-xl border">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Code</TableHead>
-                                <TableHead>Item</TableHead>
-                                <TableHead>Category</TableHead>
-                                <TableHead>Unit</TableHead>
-                                <TableHead className="text-right">
-                                    Unit price
-                                </TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {appItems.data.length === 0 && (
-                                <TableRow>
-                                    <TableCell
-                                        colSpan={5}
-                                        className="text-muted-foreground py-10 text-center"
-                                    >
-                                        No catalog items for{' '}
-                                        {filters.fiscal_year}. Import the
-                                        APP-CSE worksheet first.
-                                    </TableCell>
-                                </TableRow>
-                            )}
-
-                            {appItems.data.map((appItem) => (
-                                <TableRow key={appItem.id}>
-                                    <TableCell className="font-mono text-xs">
-                                        {appItem.item_code}
-                                    </TableCell>
-                                    <TableCell className="font-medium">
-                                        {appItem.item_name}
-                                    </TableCell>
-                                    <TableCell className="text-muted-foreground text-xs">
-                                        {appItem.category}
-                                    </TableCell>
-                                    <TableCell>
-                                        {appItem.unit_of_measure}
-                                    </TableCell>
-                                    <TableCell className="text-right tabular-nums">
-                                        {appItem.unit_price ?? (
-                                            <Badge variant="secondary">
-                                                Unpriced
-                                            </Badge>
-                                        )}
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
-
-                <PaginationNav
-                    links={appItems.links}
-                    from={appItems.from}
-                    to={appItems.to}
-                    total={appItems.total}
+                <DataTable
+                    tableId="ps-dbms-catalog"
+                    visitUrl={index.url()}
+                    paginated={appItems}
+                    columns={columns}
+                    filters={filters}
+                    searchPlaceholder="Item name or code"
+                    filterDefs={[
+                        {
+                            id: 'fiscal_year',
+                            label: 'Year',
+                            options: years.map((year) => ({
+                                value: String(year),
+                                label: String(year),
+                            })),
+                        },
+                        {
+                            id: 'category',
+                            label: 'Category',
+                            options: categories.map((category) => ({
+                                value: category,
+                                label: category,
+                            })),
+                        },
+                    ]}
+                    initialPinning={{ start: ['item_code'] }}
+                    emptyMessage={`No catalog items for ${filters.fiscal_year}. Import the APP-CSE worksheet first.`}
                 />
             </div>
         </>

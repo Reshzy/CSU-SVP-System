@@ -2,5 +2,8 @@
     "agents": [
         "cursor"
     ],
-    "guidelines": true
+    "guidelines": true,
+    "packages": [
+        "spatie/laravel-permission"
+    ]
 }

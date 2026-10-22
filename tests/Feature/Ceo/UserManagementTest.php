@@ -144,3 +144,71 @@ test('a user without the Executive Officer role cannot approve anyone', function
 test('guests are redirected away from the queue', function () {
     $this->get(route('ceo.users.index'))->assertRedirect(route('login'));
 });
+
+test('the registration queue searches by name and keeps the status tab', function () {
+    User::factory()->pending()->create(['name' => 'Alice Santos']);
+    User::factory()->pending()->create(['name' => 'Bob Cruz']);
+
+    $this->actingAs($this->executiveOfficer)
+        ->get(route('ceo.users.index', ['search' => 'Alice']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->count('users.data', 1)
+            ->where('users.data.0.name', 'Alice Santos')
+            ->where('filters.search', 'Alice')
+            ->where('filters.status', ApprovalStatus::Pending->value)
+        );
+});
+
+test('the registration queue sorts by name and ignores unknown sort keys', function () {
+    $bob = User::factory()->pending()->create(['name' => 'Bob Cruz', 'created_at' => now()->subHour()]);
+    $alice = User::factory()->pending()->create(['name' => 'Alice Santos', 'created_at' => now()]);
+
+    $this->actingAs($this->executiveOfficer)
+        ->get(route('ceo.users.index', ['sort' => 'name', 'direction' => 'asc']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('users.data.0.id', $alice->id)
+            ->where('users.data.1.id', $bob->id)
+        );
+
+    $this->actingAs($this->executiveOfficer)
+        ->get(route('ceo.users.index', ['sort' => 'password']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('users.data.0.id', $alice->id)
+        );
+});
+
+test('the registration queue respects page size and date range filters', function () {
+    User::factory()->pending()->count(16)->create(['created_at' => now()->subDays(2)]);
+    $recent = User::factory()->pending()->create([
+        'name' => 'Recent Applicant',
+        'created_at' => now(),
+    ]);
+
+    $this->actingAs($this->executiveOfficer)
+        ->get(route('ceo.users.index', ['per_page' => 50]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('users.per_page', 50)
+            ->count('users.data', 17)
+        );
+
+    $this->actingAs($this->executiveOfficer)
+        ->get(route('ceo.users.index', [
+            'date_from' => now()->toDateString(),
+            'date_to' => now()->toDateString(),
+        ]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->count('users.data', 1)
+            ->where('users.data.0.id', $recent->id)
+        );
+});
+
+test('the registration queue rejects an invalid page size', function () {
+    $this->actingAs($this->executiveOfficer)
+        ->get(route('ceo.users.index', ['per_page' => 7]))
+        ->assertSessionHasErrors('per_page');
+});

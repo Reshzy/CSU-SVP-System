@@ -1,221 +1,114 @@
-import { Head, Link } from '@inertiajs/react';
-import { createColumnHelper, flexRender } from '@tanstack/react-table';
-import {
-    getCoreRowModel,
-    useLegacyTable,
-} from '@tanstack/react-table/legacy';
+import { Head, Link, router } from '@inertiajs/react';
 import { useMemo } from 'react';
+import {
+    createDataTableColumnHelper,
+    DataTable,
+    humanizeStatus,
+    type DataTableFilterDef,
+    type TableQueryFilters,
+} from '@/components/data-table';
 import Heading from '@/components/heading';
-import { PaginationNav } from '@/components/pagination-nav';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
-import {
-    purchaseRequestStatusBadgeVariant,
-    purchaseRequestStatusLabel,
-} from '@/lib/purchase-request-status';
-import { index, show } from '@/routes/supply/purchase-requests';
-import type { Paginated, PurchaseRequest, PurchaseRequestStatus } from '@/types';
+import { index, show, status } from '@/routes/supply/purchase-requests';
+import type { Paginated } from '@/types';
 
-const queueStatuses: PurchaseRequestStatus[] = [
-    'submitted',
-    'supply_office_review',
-    'budget_office_review',
-    'returned_by_supply',
-    'rejected',
-    'cancelled',
-];
-
-const columnHelper = createColumnHelper<PurchaseRequest>();
-
-type Props = {
-    requests: Paginated<PurchaseRequest>;
-    filters: { status: PurchaseRequestStatus };
-    statusCounts: Partial<Record<PurchaseRequestStatus, number>>;
+type Row = {
+    id: number;
+    pr_number: string | null;
+    pr_title: string | null;
+    status: string;
+    estimated_total: string;
+    department?: { name: string } | null;
+    requester?: { name: string } | null;
+    created_at?: string;
 };
 
-export default function SupplyPurchaseRequestsIndex({
-    requests,
+type Props = {
+    purchaseRequests: Paginated<Row>;
+    filters: TableQueryFilters;
+    statusOptions: DataTableFilterDef['options'];
+};
+
+const columnHelper = createDataTableColumnHelper<Row>();
+
+export default function SupplyPurchaseRequestIndex({
+    purchaseRequests,
     filters,
-    statusCounts,
+    statusOptions,
 }: Props) {
     const columns = useMemo(
         () => [
             columnHelper.accessor('pr_number', {
                 header: 'PR number',
-                cell: (info) => (
-                    <span className="font-medium">{info.getValue()}</span>
+                cell: ({ row, getValue }) => (
+                    <Link
+                        href={show.url(row.original.id)}
+                        className="text-primary font-medium underline-offset-4 hover:underline"
+                    >
+                        {getValue() ?? `#${row.original.id}`}
+                    </Link>
                 ),
             }),
-            columnHelper.accessor(
-                (row) => row.department?.name ?? '—',
-                {
-                    id: 'department',
-                    header: 'Department',
-                },
-            ),
-            columnHelper.accessor(
-                (row) => row.requester?.name ?? '—',
-                {
-                    id: 'requester',
-                    header: 'Requester',
-                },
-            ),
-            columnHelper.accessor('purpose', {
-                header: 'Purpose',
-            }),
-            columnHelper.accessor('estimated_total', {
-                header: 'Estimated',
-                cell: (info) => (
-                    <span className="tabular-nums">{info.getValue()}</span>
-                ),
-            }),
+            columnHelper.accessor('pr_title', { header: 'Title' }),
             columnHelper.accessor('status', {
                 header: 'Status',
-                cell: (info) => (
-                    <Badge
-                        variant={purchaseRequestStatusBadgeVariant(
-                            info.getValue(),
-                        )}
-                    >
-                        {purchaseRequestStatusLabel(info.getValue())}
-                    </Badge>
+                cell: ({ getValue }) => (
+                    <span className="capitalize">{humanizeStatus(getValue())}</span>
                 ),
             }),
-            columnHelper.display({
-                id: 'actions',
-                header: '',
-                cell: (info) => (
-                    <Button variant="outline" size="sm" asChild>
-                        <Link href={show(info.row.original.id)}>Review</Link>
-                    </Button>
-                ),
+            columnHelper.accessor('estimated_total', {
+                header: 'Total',
+                cell: ({ getValue }) =>
+                    Number(getValue()).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                    }),
+            }),
+            columnHelper.accessor((row) => row.requester?.name ?? '', {
+                id: 'requester',
+                header: 'Requester',
+                enableSorting: false,
             }),
         ],
         [],
     );
 
-    const table = useLegacyTable({
-        data: requests.data,
-        columns,
-        getCoreRowModel: getCoreRowModel(),
-    });
-
     return (
         <>
-            <Head title="Supply purchase requests" />
-
+            <Head title="Supply queue" />
             <div className="flex flex-1 flex-col gap-6 p-4">
                 <Heading
-                    title="Purchase requests"
-                    description="Review department requests, group lots, and send them to Budget Office."
+                    title="Supply queue"
+                    description="Review and activate purchase requests."
                 />
-
-                <div className="flex flex-wrap gap-1">
-                    {queueStatuses.map((status) => (
-                        <Button
-                            key={status}
-                            variant={
-                                status === filters.status ? 'default' : 'ghost'
-                            }
-                            size="sm"
-                            asChild
-                        >
-                            <Link href={index({ query: { status } }).url}>
-                                {purchaseRequestStatusLabel(status)}
-                                <span className="text-muted-foreground ml-1.5 tabular-nums">
-                                    {statusCounts[status] ?? 0}
-                                </span>
-                            </Link>
-                        </Button>
-                    ))}
-                </div>
-
-                <div className="rounded-xl border">
-                    <Table>
-                        <TableHeader>
-                            {table.getHeaderGroups().map((headerGroup) => (
-                                <TableRow key={headerGroup.id}>
-                                    {headerGroup.headers.map((header) => (
-                                        <TableHead
-                                            key={header.id}
-                                            className={
-                                                header.id === 'estimated_total'
-                                                    ? 'text-right'
-                                                    : header.id === 'actions'
-                                                      ? 'w-0'
-                                                      : undefined
-                                            }
-                                        >
-                                            {header.isPlaceholder
-                                                ? null
-                                                : flexRender(
-                                                      header.column.columnDef
-                                                          .header,
-                                                      header.getContext(),
-                                                  )}
-                                        </TableHead>
-                                    ))}
-                                </TableRow>
-                            ))}
-                        </TableHeader>
-                        <TableBody>
-                            {table.getRowModel().rows.length === 0 && (
-                                <TableRow>
-                                    <TableCell
-                                        colSpan={columns.length}
-                                        className="text-muted-foreground py-10 text-center"
-                                    >
-                                        No{' '}
-                                        {purchaseRequestStatusLabel(
-                                            filters.status,
-                                        ).toLowerCase()}{' '}
-                                        requests.
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                            {table.getRowModel().rows.map((row) => (
-                                <TableRow key={row.id}>
-                                    {row.getVisibleCells().map((cell) => (
-                                        <TableCell
-                                            key={cell.id}
-                                            className={
-                                                cell.column.id ===
-                                                'estimated_total'
-                                                    ? 'text-right'
-                                                    : undefined
-                                            }
-                                        >
-                                            {flexRender(
-                                                cell.column.columnDef.cell,
-                                                cell.getContext(),
-                                            )}
-                                        </TableCell>
-                                    ))}
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
-
-                <PaginationNav
-                    links={requests.links}
-                    from={requests.from}
-                    to={requests.to}
-                    total={requests.total}
+                <DataTable
+                    tableId="supply-purchase-requests"
+                    visitUrl={index.url()}
+                    paginated={purchaseRequests}
+                    columns={columns}
+                    filters={filters}
+                    searchPlaceholder="PR number or title"
+                    filterDefs={[
+                        { id: 'status', label: 'Status', options: statusOptions },
+                    ]}
+                    dateColumn="created_at"
+                    dateLabel="Created"
+                    initialPinning={{ start: ['pr_number'] }}
+                    rowActions={(row) => [
+                        { label: 'View', href: show.url(row.id) },
+                        {
+                            label: 'Activate',
+                            onClick: () =>
+                                router.post(status.url(row.id), {
+                                    action: 'activate',
+                                }),
+                        },
+                    ]}
+                    emptyMessage="No requests in the Supply queue."
                 />
             </div>
         </>
     );
 }
 
-SupplyPurchaseRequestsIndex.layout = {
-    breadcrumbs: [{ title: 'Supply requests', href: index() }],
+SupplyPurchaseRequestIndex.layout = {
+    breadcrumbs: [{ title: 'Supply queue', href: index() }],
 };

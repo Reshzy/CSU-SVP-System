@@ -88,9 +88,77 @@ class PpmpItem extends Model
         };
     }
 
-    public function hasQuantityForQuarter(int $quarter): bool
+    /**
+     * Quantity that may be requested through the given quarter: planned Q1…Qn
+     * minus live purchase requests stamped in those quarters. Unused leftover
+     * from earlier quarters is included; later-quarter columns are not.
+     */
+    public function getUsableQuantity(int $throughQuarter, ?int $excludePurchaseRequestId = null): int
     {
-        return $this->getQuarterlyQuantity($quarter) > 0;
+        $throughQuarter = $this->clampQuarter($throughQuarter);
+
+        $plannedQuantity = 0;
+
+        for ($quarter = 1; $quarter <= $throughQuarter; $quarter++) {
+            $plannedQuantity += $this->getQuarterlyQuantity($quarter);
+        }
+
+        $usedQuantity = $this->purchaseRequestItems()
+            ->whereBetween('ppmp_quarter', [1, $throughQuarter])
+            ->when(
+                $excludePurchaseRequestId,
+                fn (Builder $query) => $query->where('purchase_request_id', '!=', $excludePurchaseRequestId),
+            )
+            ->whereHas('purchaseRequest', function (Builder $query): void {
+                $query->where('is_archived', false)
+                    ->whereNotIn('status', self::RELEASING_PR_STATUSES);
+            })
+            ->sum('quantity_requested');
+
+        return max(0, $plannedQuantity - (int) $usedQuantity);
+    }
+
+    /**
+     * Planned quantity sitting only in quarters after the current one.
+     */
+    public function getLaterRemainingQuantity(int $currentQuarter): int
+    {
+        $currentQuarter = $this->clampQuarter($currentQuarter);
+        $later = 0;
+
+        for ($quarter = $currentQuarter + 1; $quarter <= 4; $quarter++) {
+            $later += $this->getQuarterlyQuantity($quarter);
+        }
+
+        return $later;
+    }
+
+    /**
+     * Move later-quarter planned quantity onto the current quarter in place.
+     * Total quantity and costs stay the same; the row id does not change.
+     *
+     * @return int Units moved onto the current quarter.
+     */
+    public function realignLaterQuartersTo(int $currentQuarter): int
+    {
+        $currentQuarter = $this->clampQuarter($currentQuarter);
+        $moved = $this->getLaterRemainingQuantity($currentQuarter);
+
+        if ($moved === 0) {
+            return 0;
+        }
+
+        $updates = [
+            "q{$currentQuarter}_quantity" => $this->getQuarterlyQuantity($currentQuarter) + $moved,
+        ];
+
+        for ($quarter = $currentQuarter + 1; $quarter <= 4; $quarter++) {
+            $updates["q{$quarter}_quantity"] = 0;
+        }
+
+        $this->fill($updates)->save();
+
+        return $moved;
     }
 
     /**
@@ -102,7 +170,8 @@ class PpmpItem extends Model
      *
      * Pass `$quarter` to scope both sides to one quarter's allocation, and
      * `$excludePurchaseRequestId` when editing a request that should not count
-     * against itself.
+     * against itself. Isolated remaining does not carry leftover across
+     * quarters — use `getUsableQuantity()` for what may be requested now.
      */
     public function getRemainingQuantity(?int $quarter = null, ?int $excludePurchaseRequestId = null): int
     {
@@ -123,6 +192,11 @@ class PpmpItem extends Model
             ->sum('quantity_requested');
 
         return max(0, $plannedQuantity - (int) $usedQuantity);
+    }
+
+    private function clampQuarter(int $quarter): int
+    {
+        return max(1, min(4, $quarter));
     }
 
     public function calculateEstimatedTotalCost(): float

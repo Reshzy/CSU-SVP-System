@@ -3,11 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Concerns\FlashesToasts;
+use App\Http\Requests\ListQueryRequest;
 use App\Http\Requests\PsDbms\ImportAppItemsRequest;
 use App\Models\AppItem;
 use App\Services\AppItemImporter;
+use App\Support\ListQuery;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -21,31 +22,35 @@ class AppItemController extends Controller
 {
     use FlashesToasts;
 
-    public function index(Request $request): Response
+    public function index(ListQueryRequest $request): Response
     {
         $fiscalYear = (int) ($request->integer('fiscal_year') ?: date('Y'));
 
-        $appItems = AppItem::query()
-            ->forFiscalYear($fiscalYear)
-            ->when($request->filled('category'), function ($query) use ($request): void {
-                $query->where('category', $request->string('category')->value());
-            })
-            ->when($request->filled('search'), function ($query) use ($request): void {
-                $search = '%'.$request->string('search')->trim().'%';
-                $query->where(fn ($q) => $q->where('item_name', 'like', $search)->orWhere('item_code', 'like', $search));
-            })
-            ->orderBy('category')
-            ->orderBy('item_name')
-            ->paginate(15)
-            ->withQueryString();
+        $appItems = ListQuery::paginate(
+            AppItem::query()->forFiscalYear($fiscalYear),
+            $request,
+            [
+                'searchable' => ['item_code', 'item_name'],
+                'sortable' => [
+                    'item_code' => 'item_code',
+                    'item_name' => 'item_name',
+                    'category' => 'category',
+                    'unit_of_measure' => 'unit_of_measure',
+                    'unit_price' => 'unit_price',
+                ],
+                'equals' => ['category' => 'category'],
+                'defaultSort' => 'category',
+                'defaultDirection' => 'asc',
+                'defaultPerPage' => 15,
+            ],
+        );
 
         return Inertia::render('reference/ps-dbms/index', [
             'appItems' => $appItems,
-            'filters' => [
+            'filters' => ListQuery::snapshot($request, [
                 'fiscal_year' => $fiscalYear,
-                'category' => $request->string('category')->value(),
-                'search' => $request->string('search')->value(),
-            ],
+                'category' => $request->filled('category') ? $request->string('category')->value() : null,
+            ]),
             'categories' => AppItem::query()
                 ->forFiscalYear($fiscalYear)
                 ->distinct()

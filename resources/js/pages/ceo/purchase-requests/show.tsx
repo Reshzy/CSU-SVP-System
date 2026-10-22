@@ -1,253 +1,120 @@
-import { Form, Head, Link } from '@inertiajs/react';
+import { Head, Link, useForm } from '@inertiajs/react';
 import Heading from '@/components/heading';
-import InputError from '@/components/input-error';
-import { Badge } from '@/components/ui/badge';
+import { PrTimeline, type TimelineActivity } from '@/components/pr-timeline';
 import { Button } from '@/components/ui/button';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Spinner } from '@/components/ui/spinner';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
-import {
-    purchaseRequestStatusBadgeVariant,
-    purchaseRequestStatusLabel,
-} from '@/lib/purchase-request-status';
-import { index, update } from '@/routes/ceo/purchase-requests';
-import type { CeoAllowedAction, PurchaseRequest } from '@/types';
+import { Textarea } from '@/components/ui/textarea';
+import { index, show, update } from '@/routes/ceo/purchase-requests';
+import type { Paginated } from '@/types';
 
-type Props = {
-    purchaseRequest: PurchaseRequest;
-    allowedActions: CeoAllowedAction[];
+type Row = {
+    id: number;
+    pr_number: string | null;
+    pr_title: string | null;
+    estimated_total: string;
 };
 
-export default function CeoPurchaseRequestShow({
-    purchaseRequest,
-    allowedActions,
-}: Props) {
-    const items = purchaseRequest.items ?? [];
-    const canApprove = allowedActions.includes('approve');
-    const canReject = allowedActions.includes('reject');
+type IndexProps = { purchaseRequests: Paginated<Row> };
+
+export function CeoPurchaseRequestIndexPage({ purchaseRequests }: IndexProps) {
+    return (
+        <>
+            <Head title="CEO approvals" />
+            <div className="flex flex-1 flex-col gap-6 p-4">
+                <Heading title="CEO purchase request approvals" description="Approve for BAC evaluation or defer." />
+                <div className="overflow-x-auto rounded-lg border">
+                    <table className="w-full text-sm">
+                        <thead className="bg-muted/50 text-left">
+                            <tr>
+                                <th className="px-3 py-2">PR</th>
+                                <th className="px-3 py-2">Title</th>
+                                <th className="px-3 py-2">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {purchaseRequests.data.map((pr) => (
+                                <tr key={pr.id} className="border-t">
+                                    <td className="px-3 py-2">
+                                        <Link href={show.url(pr.id)} className="text-primary underline-offset-4 hover:underline">
+                                            {pr.pr_number}
+                                        </Link>
+                                    </td>
+                                    <td className="px-3 py-2">{pr.pr_title}</td>
+                                    <td className="px-3 py-2">{pr.estimated_total}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </>
+    );
+}
+
+CeoPurchaseRequestIndexPage.layout = {
+    breadcrumbs: [{ title: 'CEO purchase requests', href: index() }],
+};
+
+type ShowProps = {
+    purchaseRequest: {
+        id: number;
+        pr_number: string | null;
+        pr_title: string | null;
+        purpose: string | null;
+        earmark_id: string | null;
+        activities?: TimelineActivity[];
+    };
+    statusLabel: string;
+};
+
+export default function CeoPurchaseRequestShow({ purchaseRequest, statusLabel }: ShowProps) {
+    const form = useForm({
+        decision: 'approve',
+        rejection_reason: '',
+    });
 
     return (
         <>
-            <Head title={purchaseRequest.pr_number ?? 'Purchase request'} />
-
+            <Head title={purchaseRequest.pr_number ?? 'CEO PR'} />
             <div className="flex flex-1 flex-col gap-6 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                    <Heading
-                        title={purchaseRequest.pr_number ?? 'Purchase request'}
-                        description={`${purchaseRequest.department?.name ?? 'Department'} · ${purchaseRequest.requester?.name ?? 'Requester'}`}
-                    />
-                    <div className="flex items-center gap-2">
-                        <Badge
-                            variant={purchaseRequestStatusBadgeVariant(
-                                purchaseRequest.status,
-                            )}
-                        >
-                            {purchaseRequestStatusLabel(purchaseRequest.status)}
-                        </Badge>
-                        <Button variant="outline" asChild>
-                            <Link href={index()}>Queue</Link>
+                <Heading
+                    title={purchaseRequest.pr_number ?? 'Purchase request'}
+                    description={`${purchaseRequest.pr_title} · ${statusLabel}`}
+                />
+                <p className="text-sm text-muted-foreground">{purchaseRequest.purpose}</p>
+                <p className="text-sm">Earmark: {purchaseRequest.earmark_id}</p>
+                <form
+                    className="max-w-xl space-y-3"
+                    onSubmit={(event) => {
+                        event.preventDefault();
+                        form.post(update.url(purchaseRequest.id));
+                    }}
+                >
+                    <div className="flex gap-2">
+                        <Button type="button" variant={form.data.decision === 'approve' ? 'default' : 'outline'} onClick={() => form.setData('decision', 'approve')}>
+                            Approve
+                        </Button>
+                        <Button type="button" variant={form.data.decision === 'reject' ? 'default' : 'outline'} onClick={() => form.setData('decision', 'reject')}>
+                            Defer
                         </Button>
                     </div>
+                    <Textarea
+                        placeholder="Deferral reason"
+                        value={form.data.rejection_reason}
+                        onChange={(event) => form.setData('rejection_reason', event.target.value)}
+                    />
+                    <Button type="submit" disabled={form.processing}>
+                        Submit decision
+                    </Button>
+                </form>
+                <div className="space-y-3">
+                    <h2 className="text-base font-medium">Activity timeline</h2>
+                    <PrTimeline activities={purchaseRequest.activities ?? []} />
                 </div>
-
-                <dl className="grid gap-3 text-sm sm:grid-cols-2">
-                    {purchaseRequest.earmark_id && (
-                        <div>
-                            <dt className="text-muted-foreground">Earmark</dt>
-                            <dd>{purchaseRequest.earmark_id}</dd>
-                        </div>
-                    )}
-                    {purchaseRequest.funding_source && (
-                        <div>
-                            <dt className="text-muted-foreground">Funding</dt>
-                            <dd>{purchaseRequest.funding_source}</dd>
-                        </div>
-                    )}
-                    {purchaseRequest.resolution_number && (
-                        <div>
-                            <dt className="text-muted-foreground">
-                                Resolution
-                            </dt>
-                            <dd>{purchaseRequest.resolution_number}</dd>
-                        </div>
-                    )}
-                    {purchaseRequest.procurement_method && (
-                        <div>
-                            <dt className="text-muted-foreground">Method</dt>
-                            <dd>{purchaseRequest.procurement_method}</dd>
-                        </div>
-                    )}
-                </dl>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                    <div className="rounded-xl border p-4">
-                        <h2 className="mb-2 text-sm font-medium">Purpose</h2>
-                        <p className="text-sm">{purchaseRequest.purpose}</p>
-                    </div>
-                    <div className="rounded-xl border p-4">
-                        <h2 className="mb-2 text-sm font-medium">
-                            Justification
-                        </h2>
-                        <p className="text-sm">
-                            {purchaseRequest.justification}
-                        </p>
-                    </div>
-                </div>
-
-                {purchaseRequest.rejection_reason && (
-                    <p className="text-sm">
-                        <span className="text-muted-foreground">
-                            Deferral reason:{' '}
-                        </span>
-                        {purchaseRequest.rejection_reason}
-                    </p>
-                )}
-
-                <div className="rounded-xl border">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Item</TableHead>
-                                <TableHead>UOM</TableHead>
-                                <TableHead className="text-right">Qty</TableHead>
-                                <TableHead className="text-right">
-                                    Unit cost
-                                </TableHead>
-                                <TableHead className="text-right">
-                                    Total
-                                </TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {items.map((item) => (
-                                <TableRow key={item.id}>
-                                    <TableCell className="font-medium">
-                                        {item.is_lot
-                                            ? (item.lot_name ?? item.item_name)
-                                            : item.item_name}
-                                    </TableCell>
-                                    <TableCell>{item.unit_of_measure}</TableCell>
-                                    <TableCell className="text-right tabular-nums">
-                                        {item.quantity_requested}
-                                    </TableCell>
-                                    <TableCell className="text-right tabular-nums">
-                                        {item.estimated_unit_cost}
-                                    </TableCell>
-                                    <TableCell className="text-right tabular-nums">
-                                        {item.estimated_total_cost}
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
-
-                {(canApprove || canReject) && (
-                    <div className="grid max-w-5xl gap-6 lg:grid-cols-2">
-                        {canApprove && (
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Approve</CardTitle>
-                                    <CardDescription>
-                                        Sets Small Value Procurement, mints a
-                                        resolution number, and sends the
-                                        request to BAC.
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <Form
-                                        {...update.form(purchaseRequest.id)}
-                                        disableWhileProcessing
-                                    >
-                                        {({ processing }) => (
-                                            <>
-                                                <input
-                                                    type="hidden"
-                                                    name="decision"
-                                                    value="approve"
-                                                />
-                                                <Button type="submit">
-                                                    {processing && <Spinner />}
-                                                    Approve for BAC
-                                                </Button>
-                                            </>
-                                        )}
-                                    </Form>
-                                </CardContent>
-                            </Card>
-                        )}
-                        {canReject && (
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Defer</CardTitle>
-                                    <CardDescription>
-                                        Closes the request. The status is shown
-                                        as Deferred.
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <Form
-                                        {...update.form(purchaseRequest.id)}
-                                        disableWhileProcessing
-                                        className="space-y-3"
-                                    >
-                                        {({ processing, errors }) => (
-                                            <>
-                                                <input
-                                                    type="hidden"
-                                                    name="decision"
-                                                    value="reject"
-                                                />
-                                                <div className="grid gap-2">
-                                                    <Label htmlFor="rejection_reason">
-                                                        Reason
-                                                    </Label>
-                                                    <Input
-                                                        id="rejection_reason"
-                                                        name="rejection_reason"
-                                                        required
-                                                    />
-                                                    <InputError
-                                                        message={
-                                                            errors.rejection_reason
-                                                        }
-                                                    />
-                                                </div>
-                                                <Button
-                                                    type="submit"
-                                                    variant="destructive"
-                                                >
-                                                    {processing && <Spinner />}
-                                                    Defer
-                                                </Button>
-                                            </>
-                                        )}
-                                    </Form>
-                                </CardContent>
-                            </Card>
-                        )}
-                    </div>
-                )}
             </div>
         </>
     );
 }
 
 CeoPurchaseRequestShow.layout = {
-    breadcrumbs: [{ title: 'CEO requests', href: index() }],
+    breadcrumbs: [{ title: 'CEO purchase requests', href: index() }],
 };

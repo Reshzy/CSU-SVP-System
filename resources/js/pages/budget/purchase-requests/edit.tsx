@@ -1,232 +1,295 @@
-import { Form, Head, Link } from '@inertiajs/react';
-import { EarmarkForm } from '@/components/earmark-form';
+import { Head, useForm } from '@inertiajs/react';
+import { earmarkSchema, zodIssuesToFormErrors } from '@/lib/schemas';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Spinner } from '@/components/ui/spinner';
 import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { usePrecognitiveForm } from '@/hooks/use-precognitive-form';
 import {
-    purchaseRequestStatusBadgeVariant,
-    purchaseRequestStatusLabel,
-} from '@/lib/purchase-request-status';
-import {
-    amend,
+    amendEarmark,
     exportEarmark,
     index,
     reject,
     update,
 } from '@/routes/budget/purchase-requests';
-import type {
-    BudgetAllowedAction,
-    FundClusterOption,
-    PurchaseRequest,
-} from '@/types';
+
+type PurchaseRequest = {
+    id: number;
+    pr_number: string | null;
+    pr_title: string | null;
+    status: string;
+    earmark_id: string | null;
+    legal_basis: string | null;
+    fund_cluster_code: string | null;
+    earmark_programs_activities: string | null;
+    earmark_responsibility_center: string | null;
+    earmark_date_to: string | null;
+    current_step_notes: string | null;
+};
+
+type FundCluster = { value: string; label: string };
 
 type Props = {
     purchaseRequest: PurchaseRequest;
-    allowedActions: BudgetAllowedAction[];
-    fundClusters: FundClusterOption[];
+    statusLabel: string;
+    fundClusters: FundCluster[];
 };
+
+function dateInputValue(value: string | null): string {
+    return value ? value.slice(0, 10) : '';
+}
 
 export default function BudgetPurchaseRequestEdit({
     purchaseRequest,
-    allowedActions,
+    statusLabel,
     fundClusters,
 }: Props) {
-    const items = purchaseRequest.items ?? [];
-    const canApprove = allowedActions.includes('approve');
-    const canReject = allowedActions.includes('reject');
-    const canExport = allowedActions.includes('export');
-    const canAmend = allowedActions.includes('amend');
+    const form = usePrecognitiveForm(
+        'put',
+        update.url(purchaseRequest.id),
+        {
+            legal_basis: purchaseRequest.legal_basis ?? 'Section 86 of RA 9184',
+            fund_cluster_code: purchaseRequest.fund_cluster_code ?? '',
+            earmark_programs_activities:
+                purchaseRequest.earmark_programs_activities ?? '',
+            earmark_responsibility_center:
+                purchaseRequest.earmark_responsibility_center ?? '',
+            earmark_date_to: dateInputValue(purchaseRequest.earmark_date_to),
+            current_step_notes: purchaseRequest.current_step_notes ?? '',
+            earmark_object_expenditures: [
+                { description: 'Supplies', amount: 0 },
+            ],
+        },
+    );
+
+    const rejectForm = useForm({
+        rejection_reason: '',
+    });
+
+    function earmarkPayload() {
+        return {
+            legal_basis: form.data.legal_basis,
+            fund_cluster_code: form.data.fund_cluster_code,
+            earmark_programs_activities: form.data.earmark_programs_activities,
+            earmark_responsibility_center:
+                form.data.earmark_responsibility_center,
+            earmark_date_to: form.data.earmark_date_to,
+            current_step_notes: form.data.current_step_notes,
+            earmark_object_expenditures:
+                form.data.earmark_object_expenditures.map((row) => ({
+                    description: row.description,
+                    amount: Number(row.amount ?? 0),
+                })),
+        };
+    }
+
+    function applyZod(): boolean {
+        const parsed = earmarkSchema.safeParse(earmarkPayload());
+
+        if (!parsed.success) {
+            form.setError(zodIssuesToFormErrors(parsed.error));
+
+            return false;
+        }
+
+        return true;
+    }
+
+    const canApprove = purchaseRequest.status === 'budget_office_review';
+    const canAmend = Boolean(purchaseRequest.earmark_id);
 
     return (
         <>
-            <Head title={purchaseRequest.pr_number ?? 'Earmark'} />
-
+            <Head title={`Earmark ${purchaseRequest.pr_number}`} />
             <div className="flex flex-1 flex-col gap-6 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                    <Heading
-                        title={purchaseRequest.pr_number ?? 'Purchase request'}
-                        description={`${purchaseRequest.department?.name ?? 'Department'} · ${purchaseRequest.requester?.name ?? 'Requester'}`}
-                    />
-                    <div className="flex flex-wrap items-center gap-2">
-                        <Badge
-                            variant={purchaseRequestStatusBadgeVariant(
-                                purchaseRequest.status,
-                            )}
+                <Heading
+                    title={purchaseRequest.pr_number ?? 'Earmark'}
+                    description={`${purchaseRequest.pr_title} · ${statusLabel}`}
+                />
+
+                <form
+                    className="grid max-w-3xl gap-4"
+                    onSubmit={(event) => {
+                        event.preventDefault();
+
+                        if (!applyZod()) {
+                            return;
+                        }
+
+                        form.put(update.url(purchaseRequest.id));
+                    }}
+                >
+                    <div className="space-y-2">
+                        <Label htmlFor="legal_basis">Legal basis</Label>
+                        <Input
+                            id="legal_basis"
+                            value={form.data.legal_basis}
+                            onChange={(event) =>
+                                form.setData('legal_basis', event.target.value)
+                            }
+                            onBlur={() => form.validate('legal_basis')}
+                        />
+                        <InputError message={form.errors.legal_basis} />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Fund cluster</Label>
+                        <Select
+                            value={form.data.fund_cluster_code || undefined}
+                            onValueChange={(value) =>
+                                form.setData('fund_cluster_code', value)
+                            }
                         >
-                            {purchaseRequestStatusLabel(purchaseRequest.status)}
-                        </Badge>
-                        {canExport && (
-                            <Button variant="outline" asChild>
-                                <a
-                                    href={exportEarmark.url(purchaseRequest.id)}
-                                >
-                                    Export earmark
-                                </a>
+                            <SelectTrigger data-testid="fund-cluster-select">
+                                <SelectValue placeholder="Select fund cluster" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {fundClusters.map((cluster) => (
+                                    <SelectItem
+                                        key={cluster.value}
+                                        value={cluster.value}
+                                    >
+                                        {cluster.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <InputError message={form.errors.fund_cluster_code} />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="earmark_programs_activities">
+                            Programs / activities
+                        </Label>
+                        <Textarea
+                            id="earmark_programs_activities"
+                            value={form.data.earmark_programs_activities}
+                            onChange={(event) =>
+                                form.setData(
+                                    'earmark_programs_activities',
+                                    event.target.value,
+                                )
+                            }
+                            onBlur={() =>
+                                form.validate('earmark_programs_activities')
+                            }
+                        />
+                        <InputError
+                            message={form.errors.earmark_programs_activities}
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="earmark_responsibility_center">
+                            Responsibility center
+                        </Label>
+                        <Input
+                            id="earmark_responsibility_center"
+                            value={form.data.earmark_responsibility_center}
+                            onChange={(event) =>
+                                form.setData(
+                                    'earmark_responsibility_center',
+                                    event.target.value,
+                                )
+                            }
+                            onBlur={() =>
+                                form.validate('earmark_responsibility_center')
+                            }
+                        />
+                        <InputError
+                            message={
+                                form.errors.earmark_responsibility_center
+                            }
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="earmark_date_to">Earmark date to</Label>
+                        <Input
+                            id="earmark_date_to"
+                            type="date"
+                            value={form.data.earmark_date_to}
+                            onChange={(event) =>
+                                form.setData(
+                                    'earmark_date_to',
+                                    event.target.value,
+                                )
+                            }
+                            onBlur={() => form.validate('earmark_date_to')}
+                        />
+                        <InputError message={form.errors.earmark_date_to} />
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {canApprove && (
+                            <Button type="submit" disabled={form.processing}>
+                                Approve earmark
                             </Button>
                         )}
                         {canAmend && (
-                            <Button variant="outline" asChild>
-                                <Link href={amend(purchaseRequest.id)}>
-                                    Amend earmark
-                                </Link>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                disabled={form.processing}
+                                onClick={() => {
+                                    if (!applyZod()) {
+                                        return;
+                                    }
+
+                                    form.patch(
+                                        amendEarmark.url(purchaseRequest.id),
+                                    );
+                                }}
+                            >
+                                Amend
                             </Button>
                         )}
                         <Button variant="outline" asChild>
-                            <Link href={index()}>Queue</Link>
+                            <a href={exportEarmark.url(purchaseRequest.id)}>
+                                Export earmark
+                            </a>
                         </Button>
-                    </div>
-                </div>
-
-                {purchaseRequest.earmark_id && (
-                    <p className="text-sm">
-                        <span className="text-muted-foreground">
-                            Earmark:{' '}
-                        </span>
-                        {purchaseRequest.earmark_id}
-                    </p>
-                )}
-
-                <div className="grid gap-4 md:grid-cols-2">
-                    <div className="rounded-xl border p-4">
-                        <h2 className="mb-2 text-sm font-medium">Purpose</h2>
-                        <p className="text-sm">{purchaseRequest.purpose}</p>
-                    </div>
-                    <div className="rounded-xl border p-4">
-                        <h2 className="mb-2 text-sm font-medium">
-                            Justification
-                        </h2>
-                        <p className="text-sm">
-                            {purchaseRequest.justification}
-                        </p>
-                    </div>
-                </div>
-
-                <div className="rounded-xl border">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Item</TableHead>
-                                <TableHead>UOM</TableHead>
-                                <TableHead className="text-right">Qty</TableHead>
-                                <TableHead className="text-right">
-                                    Unit cost
-                                </TableHead>
-                                <TableHead className="text-right">
-                                    Total
-                                </TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {items.map((item) => (
-                                <TableRow key={item.id}>
-                                    <TableCell>
-                                        <div className="font-medium">
-                                            {item.is_lot
-                                                ? (item.lot_name ??
-                                                  item.item_name)
-                                                : item.item_name}
-                                        </div>
-                                    </TableCell>
-                                    <TableCell>{item.unit_of_measure}</TableCell>
-                                    <TableCell className="text-right tabular-nums">
-                                        {item.quantity_requested}
-                                    </TableCell>
-                                    <TableCell className="text-right tabular-nums">
-                                        {item.estimated_unit_cost}
-                                    </TableCell>
-                                    <TableCell className="text-right tabular-nums">
-                                        {item.estimated_total_cost}
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
-
-                {canApprove && (
-                    <div className="rounded-xl border p-4">
-                        <h2 className="mb-4 text-sm font-medium">
-                            Earmark and approve
-                        </h2>
-                        <EarmarkForm
-                            actionUrl={update.url(purchaseRequest.id)}
-                            method="put"
-                            purchaseRequest={purchaseRequest}
-                            fundClusters={fundClusters}
-                            submitLabel="Approve earmark"
-                        />
-                    </div>
-                )}
-
-                {canReject && (
-                    <Card className="max-w-xl">
-                        <CardHeader>
-                            <CardTitle>Defer</CardTitle>
-                            <CardDescription>
-                                Closes the request. The status is shown as
-                                Deferred.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <Form
-                                {...reject.form(purchaseRequest.id)}
-                                disableWhileProcessing
-                                className="space-y-3"
+                        {canApprove && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() =>
+                                    rejectForm.post(
+                                        reject.url(purchaseRequest.id),
+                                    )
+                                }
                             >
-                                {({ processing, errors }) => (
-                                    <>
-                                        <div className="grid gap-2">
-                                            <Label htmlFor="rejection_reason">
-                                                Reason
-                                            </Label>
-                                            <Input
-                                                id="rejection_reason"
-                                                name="rejection_reason"
-                                                required
-                                            />
-                                            <InputError
-                                                message={
-                                                    errors.rejection_reason
-                                                }
-                                            />
-                                        </div>
-                                        <Button
-                                            type="submit"
-                                            variant="destructive"
-                                        >
-                                            {processing && <Spinner />}
-                                            Defer
-                                        </Button>
-                                    </>
-                                )}
-                            </Form>
-                        </CardContent>
-                    </Card>
-                )}
+                                Defer
+                            </Button>
+                        )}
+                    </div>
+                    {canApprove && (
+                        <div className="space-y-2">
+                            <Label>Deferral reason</Label>
+                            <Textarea
+                                value={rejectForm.data.rejection_reason}
+                                onChange={(event) =>
+                                    rejectForm.setData(
+                                        'rejection_reason',
+                                        event.target.value,
+                                    )
+                                }
+                            />
+                            <InputError
+                                message={rejectForm.errors.rejection_reason}
+                            />
+                        </div>
+                    )}
+                </form>
             </div>
         </>
     );
 }
 
 BudgetPurchaseRequestEdit.layout = {
-    breadcrumbs: [{ title: 'Budget requests', href: index() }],
+    breadcrumbs: [{ title: 'Budget queue', href: index() }],
 };

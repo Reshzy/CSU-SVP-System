@@ -1,18 +1,18 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
-    BookOpen,
+    BarChart3,
     Building2,
     ClipboardList,
-    FileText,
-    FolderGit2,
+    FileSpreadsheet,
     Inbox,
-    Landmark,
     Layers,
     LayoutGrid,
     Library,
     Palette,
+    Receipt,
+    Stamp,
+    Store,
     UserCheck,
-    Wallet,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
@@ -28,17 +28,24 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard, uiKit } from '@/routes';
-import { index as budgetIndex } from '@/routes/budget';
-import { index as budgetPurchaseRequestsIndex } from '@/routes/budget/purchase-requests';
 import { index as consolidatedAppIndex } from '@/routes/bac/app';
 import { index as departmentRequestsIndex } from '@/routes/ceo/department-requests';
 import { index as departmentsIndex } from '@/routes/ceo/departments';
-import { index as ceoPurchaseRequestsIndex } from '@/routes/ceo/purchase-requests';
 import { index as usersIndex } from '@/routes/ceo/users';
-import { index as ppmpIndex } from '@/routes/ppmp';
-import { index as psDbmsIndex } from '@/routes/ps-dbms';
-import { index as purchaseRequestsIndex } from '@/routes/purchase-requests';
+import { index as bacQuotationsIndex } from '@/routes/bac/quotations';
+import { index as budgetIndex } from '@/routes/budget';
+import { index as budgetPurchaseRequestsIndex } from '@/routes/budget/purchase-requests';
+import { index as ceoPurchaseRequestsIndex } from '@/routes/ceo/purchase-requests';
+import { index as accountingVouchersIndex } from '@/routes/accounting/vouchers';
+import { index as supplyInventoryReceiptsIndex } from '@/routes/supply/inventory-receipts';
+import { index as supplyPoSignatoriesIndex } from '@/routes/supply/po-signatories';
+import { index as supplyPurchaseOrdersIndex } from '@/routes/supply/purchase-orders';
 import { index as supplyPurchaseRequestsIndex } from '@/routes/supply/purchase-requests';
+import { index as ppmpIndex } from '@/routes/ppmp';
+import { index as purchaseRequestsIndex } from '@/routes/purchase-requests';
+import { analytics, pr as reportsPr } from '@/routes/reports';
+import { index as psDbmsIndex } from '@/routes/ps-dbms';
+import { index as supplySuppliersIndex } from '@/routes/supply/suppliers';
 import type { NavItem, SvpRole } from '@/types';
 
 const mainNavItems: NavItem[] = [
@@ -48,19 +55,100 @@ const mainNavItems: NavItem[] = [
         icon: LayoutGrid,
     },
     {
+        title: 'Purchase requests',
+        href: purchaseRequestsIndex(),
+        icon: Inbox,
+    },
+    {
         title: 'PPMP',
         href: ppmpIndex(),
         icon: ClipboardList,
     },
+    // {
+    //     title: 'UI Kit',
+    //     href: uiKit(),
+    //     icon: Palette,
+    // },
+];
+
+const supplyNavItems: NavItem[] = [
     {
-        title: 'Purchase requests',
-        href: purchaseRequestsIndex(),
-        icon: FileText,
+        title: 'Supply queue',
+        href: supplyPurchaseRequestsIndex(),
+        icon: Inbox,
     },
     {
-        title: 'UI Kit',
-        href: uiKit(),
-        icon: Palette,
+        title: 'Purchase orders',
+        href: supplyPurchaseOrdersIndex(),
+        icon: FileSpreadsheet,
+    },
+    {
+        title: 'Inventory receipts',
+        href: supplyInventoryReceiptsIndex(),
+        icon: Receipt,
+    },
+    {
+        title: 'PO signatories',
+        href: supplyPoSignatoriesIndex(),
+        icon: Stamp,
+    },
+];
+
+const supplierNavItems: NavItem[] = [
+    {
+        title: 'Suppliers',
+        href: supplySuppliersIndex(),
+        icon: Store,
+    },
+];
+
+const reportNavItems: NavItem[] = [
+    {
+        title: 'PR report',
+        href: reportsPr(),
+        icon: BarChart3,
+    },
+    {
+        title: 'Analytics',
+        href: analytics(),
+        icon: BarChart3,
+    },
+];
+
+const accountingNavItems: NavItem[] = [
+    {
+        title: 'Disbursement vouchers',
+        href: accountingVouchersIndex(),
+        icon: Receipt,
+    },
+];
+
+const budgetNavItems: NavItem[] = [
+    {
+        title: 'Department budgets',
+        href: budgetIndex(),
+        icon: Building2,
+    },
+    {
+        title: 'Earmark queue',
+        href: budgetPurchaseRequestsIndex(),
+        icon: ClipboardList,
+    },
+];
+
+const bacNavItems: NavItem[] = [
+    {
+        title: 'BAC quotations',
+        href: bacQuotationsIndex(),
+        icon: Layers,
+    },
+];
+
+const ceoPrNavItems: NavItem[] = [
+    {
+        title: 'CEO PR approvals',
+        href: ceoPurchaseRequestsIndex(),
+        icon: UserCheck,
     },
 ];
 
@@ -84,33 +172,7 @@ const catalogRoles: SvpRole[] = [
     'Executive Officer',
 ];
 
-const supplyNavItems: NavItem[] = [
-    {
-        title: 'Supply requests',
-        href: supplyPurchaseRequestsIndex(),
-        icon: Inbox,
-    },
-];
-
-const budgetNavItems: NavItem[] = [
-    {
-        title: 'Budget requests',
-        href: budgetPurchaseRequestsIndex(),
-        icon: Wallet,
-    },
-    {
-        title: 'Department budgets',
-        href: budgetIndex(),
-        icon: Landmark,
-    },
-];
-
 const executiveOfficerNavItems: NavItem[] = [
-    {
-        title: 'CEO requests',
-        href: ceoPurchaseRequestsIndex(),
-        icon: FileText,
-    },
     {
         title: 'User approvals',
         href: usersIndex(),
@@ -128,18 +190,7 @@ const executiveOfficerNavItems: NavItem[] = [
     },
 ];
 
-const footerNavItems: NavItem[] = [
-    {
-        title: 'Repository',
-        href: 'https://github.com/laravel/react-starter-kit',
-        icon: FolderGit2,
-    },
-    {
-        title: 'Documentation',
-        href: 'https://laravel.com/docs/starter-kits#react',
-        icon: BookOpen,
-    },
-];
+const footerNavItems: NavItem[] = [];
 
 export function AppSidebar() {
     const { auth } = usePage().props;
@@ -147,12 +198,12 @@ export function AppSidebar() {
     // Display hints only; the routes themselves sit behind
     // `role:` and `can:` middleware on the server.
     const isExecutiveOfficer = auth.roles.includes('Executive Officer');
-    const seesSupplyQueue = (
-        ['Supply Officer', 'System Admin', 'Executive Officer'] as const
-    ).some((role) => auth.roles.includes(role));
-    const seesBudgetOffice = (
-        ['Budget Office', 'System Admin', 'Executive Officer'] as const
-    ).some((role) => auth.roles.includes(role));
+    const isSupplyOfficer = auth.roles.includes('Supply Officer');
+    const isAccountingOffice = auth.roles.includes('Accounting Office');
+    const isBudgetOffice = auth.roles.includes('Budget Office');
+    const isBac = ['BAC Chair', 'BAC Members', 'BAC Secretariat'].some((role) =>
+        auth.roles.includes(role as SvpRole),
+    );
     const managesCatalog = catalogRoles.some((role) =>
         auth.roles.includes(role),
     );
@@ -174,28 +225,44 @@ export function AppSidebar() {
             <SidebarContent>
                 <NavMain items={mainNavItems} />
 
+                {isSupplyOfficer && (
+                    <NavMain items={supplyNavItems} label="Supply" />
+                )}
+
+                {auth.can?.manageSuppliers && (
+                    <NavMain items={supplierNavItems} label="Suppliers" />
+                )}
+
+                {auth.can?.viewReports && (
+                    <NavMain items={reportNavItems} label="Reports" />
+                )}
+
+                {isAccountingOffice && (
+                    <NavMain items={accountingNavItems} label="Accounting" />
+                )}
+
+                {isBudgetOffice && (
+                    <NavMain items={budgetNavItems} label="Budget" />
+                )}
+
+                {isBac && <NavMain items={bacNavItems} label="BAC" />}
+
                 {managesCatalog && (
                     <NavMain items={planningNavItems} label="Planning" />
                 )}
 
-                {seesSupplyQueue && (
-                    <NavMain items={supplyNavItems} label="Supply Office" />
-                )}
-
-                {seesBudgetOffice && (
-                    <NavMain items={budgetNavItems} label="Budget Office" />
-                )}
-
                 {isExecutiveOfficer && (
                     <NavMain
-                        items={executiveOfficerNavItems}
+                        items={[...ceoPrNavItems, ...executiveOfficerNavItems]}
                         label="Executive Officer"
                     />
                 )}
             </SidebarContent>
 
             <SidebarFooter>
-                <NavFooter items={footerNavItems} className="mt-auto" />
+                {footerNavItems.length > 0 && (
+                    <NavFooter items={footerNavItems} className="mt-auto" />
+                )}
                 <NavUser />
             </SidebarFooter>
         </Sidebar>

@@ -1,27 +1,67 @@
-import { Form, Head, Link } from '@inertiajs/react';
-import { Plus, Search } from 'lucide-react';
+import { Head, Link } from '@inertiajs/react';
+import { Plus } from 'lucide-react';
+import { useMemo } from 'react';
+import {
+    createDataTableColumnHelper,
+    DataTable,
+    type TableQueryFilters,
+} from '@/components/data-table';
 import Heading from '@/components/heading';
-import { PaginationNav } from '@/components/pagination-nav';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
 import { create, edit, index } from '@/routes/ceo/departments';
 import type { Department, Paginated } from '@/types';
 
 type Props = {
     departments: Paginated<Department>;
-    filters: { search: string | null };
+    filters: TableQueryFilters;
 };
 
+const columnHelper = createDataTableColumnHelper<Department>();
+
 export default function CeoDepartmentsIndex({ departments, filters }: Props) {
+    const columns = useMemo(
+        () => [
+            columnHelper.accessor('code', {
+                header: 'Code',
+                cell: ({ getValue }) => (
+                    <span className="font-mono text-xs">{getValue()}</span>
+                ),
+            }),
+            columnHelper.accessor('name', {
+                header: 'Name',
+                cell: ({ getValue }) => (
+                    <span className="font-medium">{getValue()}</span>
+                ),
+            }),
+            columnHelper.accessor('head_name', {
+                header: 'Head',
+                cell: ({ getValue }) => getValue() ?? '—',
+            }),
+            columnHelper.accessor('users_count', {
+                header: 'Users',
+                cell: ({ getValue }) => (
+                    <span className="tabular-nums">{getValue() ?? 0}</span>
+                ),
+            }),
+            columnHelper.accessor('is_active', {
+                header: 'State',
+                cell: ({ row }) => {
+                    if (row.original.is_archived) {
+                        return <Badge variant="destructive">Archived</Badge>;
+                    }
+
+                    return row.original.is_active ? (
+                        <Badge>Active</Badge>
+                    ) : (
+                        <Badge variant="secondary">Inactive</Badge>
+                    );
+                },
+            }),
+        ],
+        [],
+    );
+
     return (
         <>
             <Head title="Departments" />
@@ -40,95 +80,28 @@ export default function CeoDepartmentsIndex({ departments, filters }: Props) {
                     </Button>
                 </div>
 
-                <Form action={index().url} method="get" className="flex gap-2">
-                    <Input
-                        name="search"
-                        type="search"
-                        placeholder="Name or code"
-                        defaultValue={filters.search ?? ''}
-                        className="w-56"
-                    />
-                    <Button type="submit" variant="outline" size="icon">
-                        <Search className="size-4" />
-                        <span className="sr-only">Search</span>
-                    </Button>
-                </Form>
-
-                <div className="rounded-xl border">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Code</TableHead>
-                                <TableHead>Name</TableHead>
-                                <TableHead>Head</TableHead>
-                                <TableHead className="text-right">
-                                    Users
-                                </TableHead>
-                                <TableHead>State</TableHead>
-                                <TableHead className="w-0" />
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {departments.data.length === 0 && (
-                                <TableRow>
-                                    <TableCell
-                                        colSpan={6}
-                                        className="text-muted-foreground py-10 text-center"
-                                    >
-                                        No departments match that search.
-                                    </TableCell>
-                                </TableRow>
-                            )}
-
-                            {departments.data.map((department) => (
-                                <TableRow key={department.id}>
-                                    <TableCell className="font-mono text-xs">
-                                        {department.code}
-                                    </TableCell>
-                                    <TableCell className="font-medium">
-                                        {department.name}
-                                    </TableCell>
-                                    <TableCell>
-                                        {department.head_name ?? '—'}
-                                    </TableCell>
-                                    <TableCell className="text-right tabular-nums">
-                                        {department.users_count ?? 0}
-                                    </TableCell>
-                                    <TableCell>
-                                        {department.is_archived ? (
-                                            <Badge variant="destructive">
-                                                Archived
-                                            </Badge>
-                                        ) : department.is_active ? (
-                                            <Badge>Active</Badge>
-                                        ) : (
-                                            <Badge variant="secondary">
-                                                Inactive
-                                            </Badge>
-                                        )}
-                                    </TableCell>
-                                    <TableCell>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            asChild
-                                        >
-                                            <Link href={edit(department.id)}>
-                                                Edit
-                                            </Link>
-                                        </Button>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
-
-                <PaginationNav
-                    links={departments.links}
-                    from={departments.from}
-                    to={departments.to}
-                    total={departments.total}
+                <DataTable
+                    tableId="ceo-departments"
+                    visitUrl={index.url()}
+                    paginated={departments}
+                    columns={columns}
+                    filters={filters}
+                    searchPlaceholder="Name or code"
+                    filterDefs={[
+                        {
+                            id: 'is_active',
+                            label: 'State',
+                            options: [
+                                { value: '1', label: 'Active' },
+                                { value: '0', label: 'Inactive' },
+                            ],
+                        },
+                    ]}
+                    initialPinning={{ start: ['name'] }}
+                    rowActions={(department) => [
+                        { label: 'Edit', href: edit.url(department.id) },
+                    ]}
+                    emptyMessage="No departments match that search."
                 />
             </div>
         </>

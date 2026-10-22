@@ -10,8 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
- * A department's fiscal-year envelope. Available funds are allocated minus
- * what live purchase requests have reserved or already utilized.
+ * Department fiscal-year budget with allocated / reserved / utilized buckets.
  *
  * @property int $id
  * @property int $department_id
@@ -38,10 +37,6 @@ class DepartmentBudget extends Model
     /** @use HasFactory<DepartmentBudgetFactory> */
     use HasFactory;
 
-    /**
-     * The envelope for a department and year, created as zeros on first use
-     * so reserve/check never fail for a missing row.
-     */
     public static function getOrCreateForDepartment(int $departmentId, int $fiscalYear): self
     {
         return static::firstOrCreate(
@@ -55,6 +50,54 @@ class DepartmentBudget extends Model
                 'reserved_budget' => 0,
             ],
         );
+    }
+
+    public function availableBudget(): float
+    {
+        return (float) $this->allocated_budget - (float) $this->utilized_budget - (float) $this->reserved_budget;
+    }
+
+    public function committedBudget(): float
+    {
+        return (float) $this->utilized_budget + (float) $this->reserved_budget;
+    }
+
+    public function reserveBudget(float $amount): bool
+    {
+        if ($amount <= 0) {
+            return true;
+        }
+
+        if ($this->availableBudget() < $amount) {
+            return false;
+        }
+
+        $this->reserved_budget = (float) $this->reserved_budget + $amount;
+        $this->save();
+
+        return true;
+    }
+
+    public function utilizeBudget(float $amount): void
+    {
+        if ($amount <= 0) {
+            return;
+        }
+
+        $reserved = max(0.0, (float) $this->reserved_budget - $amount);
+        $this->reserved_budget = $reserved;
+        $this->utilized_budget = (float) $this->utilized_budget + $amount;
+        $this->save();
+    }
+
+    public function releaseReservedBudget(float $amount): void
+    {
+        if ($amount <= 0) {
+            return;
+        }
+
+        $this->reserved_budget = max(0.0, (float) $this->reserved_budget - $amount);
+        $this->save();
     }
 
     /**
@@ -71,66 +114,6 @@ class DepartmentBudget extends Model
     public function setBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'set_by');
-    }
-
-    public function getAvailableBudget(): float
-    {
-        return (float) $this->allocated_budget - (float) $this->utilized_budget - (float) $this->reserved_budget;
-    }
-
-    public function getCommittedBudget(): float
-    {
-        return (float) $this->utilized_budget + (float) $this->reserved_budget;
-    }
-
-    public function canReserve(float $amount): bool
-    {
-        return $this->getAvailableBudget() >= $amount;
-    }
-
-    /**
-     * Hold funds for a non-draft purchase request. Returns false when the
-     * envelope cannot cover the amount; the caller logs rather than throws.
-     */
-    public function reserveBudget(float $amount): bool
-    {
-        if (! $this->canReserve($amount)) {
-            return false;
-        }
-
-        $this->reserved_budget = (float) $this->reserved_budget + $amount;
-
-        return $this->save();
-    }
-
-    /**
-     * Move reserved funds into utilized when a request completes.
-     */
-    public function utilizeBudget(float $amount): bool
-    {
-        $this->reserved_budget = max(0, (float) $this->reserved_budget - $amount);
-        $this->utilized_budget = (float) $this->utilized_budget + $amount;
-
-        return $this->save();
-    }
-
-    /**
-     * Give reserved funds back when a request is cancelled, rejected, or returned.
-     */
-    public function releaseReservedBudget(float $amount): bool
-    {
-        $this->reserved_budget = max(0, (float) $this->reserved_budget - $amount);
-
-        return $this->save();
-    }
-
-    public function getUtilizationPercentage(): float
-    {
-        if ((float) $this->allocated_budget <= 0) {
-            return 0.0;
-        }
-
-        return ((float) $this->utilized_budget / (float) $this->allocated_budget) * 100;
     }
 
     protected function casts(): array

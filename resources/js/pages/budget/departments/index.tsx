@@ -1,186 +1,388 @@
-import { Form, Head, Link } from '@inertiajs/react';
-import { createColumnHelper, flexRender } from '@tanstack/react-table';
+import { Head, router, useForm } from '@inertiajs/react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-    getCoreRowModel,
-    useLegacyTable,
-} from '@tanstack/react-table/legacy';
-import { useMemo } from 'react';
+    createDataTableColumnHelper,
+    DataTable,
+    type TableQueryFilters,
+} from '@/components/data-table';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
-import { edit, index, show } from '@/routes/budget';
-import type { DepartmentBudgetRow } from '@/types';
+import { Label } from '@/components/ui/label';
+import { index, store, update } from '@/routes/budget';
+import type { Paginated } from '@/types';
 
-const columnHelper = createColumnHelper<DepartmentBudgetRow>();
-
-type Props = {
-    budgets: DepartmentBudgetRow[];
-    filters: { fiscal_year: number };
+type Budget = {
+    id: number;
+    fiscal_year: number;
+    allocated_budget: string;
+    reserved_budget: string;
+    utilized_budget: string;
+    notes: string | null;
+    department?: { name: string } | null;
 };
 
-export default function BudgetDepartmentsIndex({ budgets, filters }: Props) {
-    const columns = useMemo(
-        () => [
-            columnHelper.accessor((row) => row.department?.code ?? '—', {
-                id: 'code',
-                header: 'Code',
+type Department = { id: number; name: string; code: string };
+
+type Props = {
+    budgets: Paginated<Budget>;
+    departments: Department[];
+    fiscalYear: number;
+    filters: TableQueryFilters;
+};
+
+const columnHelper = createDataTableColumnHelper<Budget>();
+
+function DebugBudgetInput({
+    source,
+    field,
+    budgetId,
+    value,
+    onChange,
+}: {
+    source: 'table' | 'create';
+    field: 'allocated_budget' | 'fiscal_year';
+    budgetId?: number;
+    value: string;
+    onChange: (next: string) => void;
+}) {
+    const instanceId = useRef(Math.random().toString(36).slice(2, 8)).current;
+
+    useEffect(() => {
+        // #region agent log
+        fetch('http://127.0.0.1:7914/ingest/e66699f4-b3b7-440d-b82c-30537e1be9fc', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Debug-Session-Id': '6ad2b1',
+            },
+            body: JSON.stringify({
+                sessionId: '6ad2b1',
+                hypothesisId: 'A',
+                location: 'budget/departments/index.tsx:DebugBudgetInput',
+                message: 'input-mount',
+                data: { source, field, budgetId, instanceId, value },
+                timestamp: Date.now(),
             }),
-            columnHelper.accessor((row) => row.department?.name ?? '—', {
+        }).catch(() => {});
+        // #endregion
+
+        return () => {
+            // #region agent log
+            fetch('http://127.0.0.1:7914/ingest/e66699f4-b3b7-440d-b82c-30537e1be9fc', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Debug-Session-Id': '6ad2b1',
+                },
+                body: JSON.stringify({
+                    sessionId: '6ad2b1',
+                    hypothesisId: 'A',
+                    location: 'budget/departments/index.tsx:DebugBudgetInput',
+                    message: 'input-unmount',
+                    data: { source, field, budgetId, instanceId },
+                    timestamp: Date.now(),
+                }),
+            }).catch(() => {});
+            // #endregion
+        };
+    }, [source, field, budgetId, instanceId]);
+
+    return (
+        <Input
+            data-debug-input={instanceId}
+            value={value}
+            onFocus={() => {
+                // #region agent log
+                fetch('http://127.0.0.1:7914/ingest/e66699f4-b3b7-440d-b82c-30537e1be9fc', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Debug-Session-Id': '6ad2b1',
+                    },
+                    body: JSON.stringify({
+                        sessionId: '6ad2b1',
+                        hypothesisId: 'C',
+                        location: 'budget/departments/index.tsx:DebugBudgetInput',
+                        message: 'input-focus',
+                        data: { source, field, budgetId, instanceId, value },
+                        timestamp: Date.now(),
+                    }),
+                }).catch(() => {});
+                // #endregion
+            }}
+            onBlur={() => {
+                // #region agent log
+                fetch('http://127.0.0.1:7914/ingest/e66699f4-b3b7-440d-b82c-30537e1be9fc', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Debug-Session-Id': '6ad2b1',
+                    },
+                    body: JSON.stringify({
+                        sessionId: '6ad2b1',
+                        hypothesisId: 'C',
+                        location: 'budget/departments/index.tsx:DebugBudgetInput',
+                        message: 'input-blur',
+                        data: { source, field, budgetId, instanceId, value },
+                        timestamp: Date.now(),
+                    }),
+                }).catch(() => {});
+                // #endregion
+            }}
+            onChange={(event) => {
+                const next = event.target.value;
+                const stillFocused = document.activeElement === event.target;
+                // #region agent log
+                fetch('http://127.0.0.1:7914/ingest/e66699f4-b3b7-440d-b82c-30537e1be9fc', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Debug-Session-Id': '6ad2b1',
+                    },
+                    body: JSON.stringify({
+                        sessionId: '6ad2b1',
+                        hypothesisId: 'D',
+                        location: 'budget/departments/index.tsx:DebugBudgetInput',
+                        message: 'input-change',
+                        data: {
+                            source,
+                            field,
+                            budgetId,
+                            instanceId,
+                            prev: value,
+                            next,
+                            stillFocused,
+                        },
+                        timestamp: Date.now(),
+                    }),
+                }).catch(() => {});
+                // #endregion
+                requestAnimationFrame(() => {
+                    const active = document.activeElement as HTMLElement | null;
+                    // #region agent log
+                    fetch('http://127.0.0.1:7914/ingest/e66699f4-b3b7-440d-b82c-30537e1be9fc', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Debug-Session-Id': '6ad2b1',
+                        },
+                        body: JSON.stringify({
+                            sessionId: '6ad2b1',
+                            hypothesisId: 'A',
+                            location: 'budget/departments/index.tsx:DebugBudgetInput',
+                            message: 'input-after-paint',
+                            data: {
+                                source,
+                                field,
+                                budgetId,
+                                instanceId,
+                                next,
+                                activeDebugId: active?.getAttribute('data-debug-input'),
+                                activeTag: active?.tagName ?? null,
+                            },
+                            timestamp: Date.now(),
+                        }),
+                    }).catch(() => {});
+                    // #endregion
+                });
+                onChange(next);
+            }}
+        />
+    );
+}
+
+function AllocatedBudgetCell({ budget }: { budget: Budget }) {
+    const [value, setValue] = useState(String(budget.allocated_budget));
+
+    useEffect(() => {
+        setValue(String(budget.allocated_budget));
+    }, [budget.allocated_budget]);
+
+    const dirty = value !== String(budget.allocated_budget);
+
+    return (
+        <div className="flex min-w-0 items-center gap-2">
+            <div className="min-w-0 flex-1">
+                <DebugBudgetInput
+                    source="table"
+                    field="allocated_budget"
+                    budgetId={budget.id}
+                    value={value}
+                    onChange={setValue}
+                />
+            </div>
+            <Button
+                size="sm"
+                type="button"
+                disabled={!dirty}
+                onClick={() => {
+                    router.put(
+                        update.url(budget.id),
+                        {
+                            allocated_budget: Number(value),
+                            notes: budget.notes ?? '',
+                        },
+                        { preserveScroll: true },
+                    );
+                }}
+            >
+                Update
+            </Button>
+        </div>
+    );
+}
+
+export default function BudgetDepartmentsIndex({
+    budgets,
+    departments,
+    fiscalYear,
+    filters,
+}: Props) {
+    const form = useForm({
+        department_id: String(departments[0]?.id ?? ''),
+        fiscal_year: String(fiscalYear),
+        allocated_budget: '0',
+        notes: '',
+    });
+
+    const columns = useMemo(() => {
+        // #region agent log
+        fetch('http://127.0.0.1:7914/ingest/e66699f4-b3b7-440d-b82c-30537e1be9fc', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Debug-Session-Id': '6ad2b1',
+            },
+            body: JSON.stringify({
+                sessionId: '6ad2b1',
+                hypothesisId: 'E',
+                location: 'budget/departments/index.tsx:columns',
+                message: 'columns-recreated',
+                data: {
+                    editIds: [],
+                    formAllocated: 'stable-columns',
+                    formYear: 'stable-columns',
+                },
+                timestamp: Date.now(),
+            }),
+        }).catch(() => {});
+        // #endregion
+
+        return [
+            columnHelper.accessor((row) => row.department?.name ?? '', {
                 id: 'department',
                 header: 'Department',
+                enableSorting: false,
+                cell: ({ row }) => (
+                    <span className="font-medium">
+                        {row.original.department?.name ?? '—'}
+                    </span>
+                ),
             }),
             columnHelper.accessor('fiscal_year', { header: 'Year' }),
             columnHelper.accessor('allocated_budget', {
                 header: 'Allocated',
-                cell: (info) => (
-                    <span className="tabular-nums">{info.getValue()}</span>
+                cell: ({ row }) => (
+                    <AllocatedBudgetCell budget={row.original} />
                 ),
             }),
             columnHelper.accessor('reserved_budget', {
                 header: 'Reserved',
-                cell: (info) => (
-                    <span className="tabular-nums">{info.getValue()}</span>
+                cell: ({ getValue }) => (
+                    <span className="tabular-nums">{getValue()}</span>
                 ),
             }),
             columnHelper.accessor('utilized_budget', {
                 header: 'Utilized',
-                cell: (info) => (
-                    <span className="tabular-nums">{info.getValue()}</span>
+                cell: ({ getValue }) => (
+                    <span className="tabular-nums">{getValue()}</span>
                 ),
             }),
-            columnHelper.accessor('available_budget', {
-                header: 'Available',
-                cell: (info) => (
-                    <span className="tabular-nums">
-                        {info.getValue().toFixed(2)}
-                    </span>
-                ),
-            }),
-            columnHelper.accessor('committed_budget', {
-                header: 'Committed',
-                cell: (info) => (
-                    <span className="tabular-nums">
-                        {info.getValue().toFixed(2)}
-                    </span>
-                ),
-            }),
-            columnHelper.display({
-                id: 'actions',
-                header: '',
-                cell: (info) => (
-                    <div className="flex gap-2">
-                        <Button variant="outline" size="sm" asChild>
-                            <Link
-                                href={show(info.row.original.department_id, {
-                                    query: {
-                                        fiscal_year:
-                                            info.row.original.fiscal_year,
-                                    },
-                                })}
-                            >
-                                View
-                            </Link>
-                        </Button>
-                        <Button variant="outline" size="sm" asChild>
-                            <Link
-                                href={edit(info.row.original.department_id, {
-                                    query: {
-                                        fiscal_year:
-                                            info.row.original.fiscal_year,
-                                    },
-                                })}
-                            >
-                                Edit
-                            </Link>
-                        </Button>
-                    </div>
-                ),
-            }),
-        ],
-        [],
-    );
-
-    const table = useLegacyTable({
-        data: budgets,
-        columns,
-        getCoreRowModel: getCoreRowModel(),
-    });
+        ];
+    }, []);
 
     return (
         <>
             <Head title="Department budgets" />
-
             <div className="flex flex-1 flex-col gap-6 p-4">
                 <Heading
                     title="Department budgets"
-                    description="Set allocated envelopes. Available is allocated minus reserved minus utilized."
+                    description="Allocate fiscal-year budgets."
                 />
 
-                <Form action={index().url} method="get" className="flex gap-2">
-                    <Input
-                        name="fiscal_year"
-                        type="number"
-                        defaultValue={filters.fiscal_year}
-                        className="w-32"
-                    />
-                    <Button type="submit" variant="outline">
-                        Show year
-                    </Button>
-                </Form>
+                <form
+                    className="grid max-w-3xl gap-3 rounded-lg border p-4 md:grid-cols-4"
+                    onSubmit={(event) => {
+                        event.preventDefault();
+                        form.transform((data) => ({
+                            ...data,
+                            department_id: Number(data.department_id),
+                            fiscal_year: Number(data.fiscal_year),
+                            allocated_budget: Number(data.allocated_budget),
+                        }));
+                        form.post(store.url());
+                    }}
+                >
+                    <div className="space-y-2">
+                        <Label>Department</Label>
+                        <select
+                            className="border-input h-9 w-full rounded-md border px-3 text-sm"
+                            value={form.data.department_id}
+                            onChange={(event) =>
+                                form.setData('department_id', event.target.value)
+                            }
+                        >
+                            {departments.map((department) => (
+                                <option
+                                    key={department.id}
+                                    value={department.id}
+                                >
+                                    {department.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Year</Label>
+                        <DebugBudgetInput
+                            source="create"
+                            field="fiscal_year"
+                            value={form.data.fiscal_year}
+                            onChange={(next) =>
+                                form.setData('fiscal_year', next)
+                            }
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Allocated</Label>
+                        <DebugBudgetInput
+                            source="create"
+                            field="allocated_budget"
+                            value={form.data.allocated_budget}
+                            onChange={(next) =>
+                                form.setData('allocated_budget', next)
+                            }
+                        />
+                    </div>
+                    <div className="flex items-end">
+                        <Button type="submit" disabled={form.processing}>
+                            Save
+                        </Button>
+                    </div>
+                </form>
 
-                <div className="rounded-xl border">
-                    <Table>
-                        <TableHeader>
-                            {table.getHeaderGroups().map((headerGroup) => (
-                                <TableRow key={headerGroup.id}>
-                                    {headerGroup.headers.map((header) => (
-                                        <TableHead key={header.id}>
-                                            {header.isPlaceholder
-                                                ? null
-                                                : flexRender(
-                                                      header.column.columnDef
-                                                          .header,
-                                                      header.getContext(),
-                                                  )}
-                                        </TableHead>
-                                    ))}
-                                </TableRow>
-                            ))}
-                        </TableHeader>
-                        <TableBody>
-                            {table.getRowModel().rows.length === 0 && (
-                                <TableRow>
-                                    <TableCell
-                                        colSpan={columns.length}
-                                        className="text-muted-foreground py-10 text-center"
-                                    >
-                                        No departments.
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                            {table.getRowModel().rows.map((row) => (
-                                <TableRow key={row.id}>
-                                    {row.getVisibleCells().map((cell) => (
-                                        <TableCell key={cell.id}>
-                                            {flexRender(
-                                                cell.column.columnDef.cell,
-                                                cell.getContext(),
-                                            )}
-                                        </TableCell>
-                                    ))}
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
+                <DataTable
+                    tableId="budget-departments"
+                    visitUrl={index.url()}
+                    paginated={budgets}
+                    columns={columns}
+                    filters={filters}
+                    searchPlaceholder="Department, code, or year"
+                    initialPinning={{ start: ['department'] }}
+                    emptyMessage="No department budgets yet."
+                    noResultsMessage="No department budgets match the current filters."
+                />
             </div>
         </>
     );

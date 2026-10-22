@@ -1,18 +1,17 @@
 import { Form, Head, Link } from '@inertiajs/react';
 import { CheckCircle2, Pencil } from 'lucide-react';
+import { useMemo } from 'react';
+import {
+    createDataTableColumnHelper,
+    DataTable,
+} from '@/components/data-table';
 import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 import { edit, index, validate } from '@/routes/ppmp';
+import { realign } from '@/routes/ppmp/items';
 import type { Ppmp, PpmpSummaryItem } from '@/types';
 
 type Props = {
@@ -21,8 +20,139 @@ type Props = {
     currentQuarter: number;
 };
 
+type SummaryRow = PpmpSummaryItem & {
+    category: string;
+    item_code: string;
+    item_name: string;
+};
+
+const columnHelper = createDataTableColumnHelper<SummaryRow>();
+
+function flattenItem(item: PpmpSummaryItem): SummaryRow {
+    return {
+        ...item,
+        category: item.app_item.category,
+        item_code: item.app_item.item_code,
+        item_name: item.app_item.item_name,
+    };
+}
+
+function NumericCell({
+    value,
+    className,
+}: {
+    value: number | string;
+    className?: string;
+}) {
+    return (
+        <span className={cn('block text-right tabular-nums', className)}>
+            {value}
+        </span>
+    );
+}
+
 export default function PpmpSummary({ ppmp, items, currentQuarter }: Props) {
     const isValidated = ppmp.status === 'validated';
+
+    const rows = useMemo(() => items.map(flattenItem), [items]);
+
+    const categories = useMemo(
+        () =>
+            [...new Set(rows.map((row) => row.category))]
+                .filter(Boolean)
+                .sort()
+                .map((category) => ({ value: category, label: category })),
+        [rows],
+    );
+
+    const columns = useMemo(
+        () => [
+            columnHelper.accessor('item_code', {
+                header: 'Code',
+                cell: ({ getValue }) => (
+                    <span className="font-mono text-xs">{getValue()}</span>
+                ),
+            }),
+            columnHelper.accessor('item_name', {
+                header: 'Item',
+                cell: ({ row }) => (
+                    <>
+                        <span className="font-medium">
+                            {row.original.item_name}
+                        </span>
+                        <span className="text-muted-foreground block text-xs">
+                            {row.original.category} ·{' '}
+                            {row.original.app_item.unit_of_measure}
+                        </span>
+                    </>
+                ),
+            }),
+            columnHelper.accessor('q1_quantity', {
+                header: 'Q1',
+                cell: ({ getValue }) => <NumericCell value={getValue()} />,
+            }),
+            columnHelper.accessor('q2_quantity', {
+                header: 'Q2',
+                cell: ({ getValue }) => <NumericCell value={getValue()} />,
+            }),
+            columnHelper.accessor('q3_quantity', {
+                header: 'Q3',
+                cell: ({ getValue }) => <NumericCell value={getValue()} />,
+            }),
+            columnHelper.accessor('q4_quantity', {
+                header: 'Q4',
+                cell: ({ getValue }) => <NumericCell value={getValue()} />,
+            }),
+            columnHelper.accessor('total_quantity', {
+                header: 'Planned',
+                cell: ({ getValue }) => (
+                    <NumericCell value={getValue()} className="font-medium" />
+                ),
+            }),
+            columnHelper.accessor('remaining_quantity', {
+                header: 'Remaining',
+                cell: ({ getValue }) => <NumericCell value={getValue()} />,
+            }),
+            columnHelper.accessor('remaining_this_quarter', {
+                header: `Left in Q${currentQuarter}`,
+                cell: ({ getValue }) => <NumericCell value={getValue()} />,
+            }),
+            columnHelper.accessor('estimated_total_cost', {
+                header: 'Estimated cost',
+                cell: ({ getValue }) => <NumericCell value={getValue()} />,
+            }),
+            columnHelper.display({
+                id: 'realign',
+                header: '',
+                enableSorting: false,
+                cell: ({ row }) => {
+                    if (row.original.later_remaining <= 0) {
+                        return null;
+                    }
+
+                    return (
+                        <Form
+                            {...realign.form([ppmp.id, row.original.id])}
+                            disableWhileProcessing
+                        >
+                            {({ processing }) => (
+                                <Button
+                                    type="submit"
+                                    size="sm"
+                                    variant="outline"
+                                    data-test="realign-ppmp-item"
+                                >
+                                    {processing ? <Spinner /> : null}
+                                    Bring later quarters here
+                                </Button>
+                            )}
+                        </Form>
+                    );
+                },
+            }),
+        ],
+        [currentQuarter, ppmp.id],
+    );
 
     return (
         <>
@@ -74,85 +204,33 @@ export default function PpmpSummary({ ppmp, items, currentQuarter }: Props) {
                     </div>
                 </div>
 
-                <div className="rounded-xl border">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Code</TableHead>
-                                <TableHead>Item</TableHead>
-                                <TableHead className="text-right">Q1</TableHead>
-                                <TableHead className="text-right">Q2</TableHead>
-                                <TableHead className="text-right">Q3</TableHead>
-                                <TableHead className="text-right">Q4</TableHead>
-                                <TableHead className="text-right">
-                                    Planned
-                                </TableHead>
-                                <TableHead className="text-right">
-                                    Remaining
-                                </TableHead>
-                                <TableHead className="text-right">
-                                    Left in Q{currentQuarter}
-                                </TableHead>
-                                <TableHead className="text-right">
-                                    Estimated cost
-                                </TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {items.length === 0 && (
-                                <TableRow>
-                                    <TableCell
-                                        colSpan={10}
-                                        className="text-muted-foreground py-10 text-center"
-                                    >
-                                        This plan has no items yet.
-                                    </TableCell>
-                                </TableRow>
-                            )}
+                <p className="text-muted-foreground text-sm">
+                    Left in Q{currentQuarter} includes unused quantity from
+                    earlier quarters. Quantity planned only for later quarters
+                    must be brought here before it can be requested.
+                </p>
 
-                            {items.map((item) => (
-                                <TableRow key={item.id}>
-                                    <TableCell className="font-mono text-xs">
-                                        {item.app_item.item_code}
-                                    </TableCell>
-                                    <TableCell>
-                                        <span className="font-medium">
-                                            {item.app_item.item_name}
-                                        </span>
-                                        <span className="text-muted-foreground block text-xs">
-                                            {item.app_item.category} ·{' '}
-                                            {item.app_item.unit_of_measure}
-                                        </span>
-                                    </TableCell>
-                                    <TableCell className="text-right tabular-nums">
-                                        {item.q1_quantity}
-                                    </TableCell>
-                                    <TableCell className="text-right tabular-nums">
-                                        {item.q2_quantity}
-                                    </TableCell>
-                                    <TableCell className="text-right tabular-nums">
-                                        {item.q3_quantity}
-                                    </TableCell>
-                                    <TableCell className="text-right tabular-nums">
-                                        {item.q4_quantity}
-                                    </TableCell>
-                                    <TableCell className="text-right font-medium tabular-nums">
-                                        {item.total_quantity}
-                                    </TableCell>
-                                    <TableCell className="text-right tabular-nums">
-                                        {item.remaining_quantity}
-                                    </TableCell>
-                                    <TableCell className="text-right tabular-nums">
-                                        {item.remaining_this_quarter}
-                                    </TableCell>
-                                    <TableCell className="text-right tabular-nums">
-                                        {item.estimated_total_cost}
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
+                <DataTable
+                    tableId="ppmp-summary"
+                    mode="client"
+                    data={rows}
+                    columns={columns}
+                    searchPlaceholder="Item name or code"
+                    filterDefs={
+                        categories.length > 0
+                            ? [
+                                  {
+                                      id: 'category',
+                                      label: 'Category',
+                                      options: categories,
+                                  },
+                              ]
+                            : []
+                    }
+                    initialPinning={{ start: ['item_code'] }}
+                    emptyMessage="This plan has no items yet."
+                    noResultsMessage="No items match the current filters."
+                />
             </div>
         </>
     );

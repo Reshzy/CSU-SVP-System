@@ -1,186 +1,59 @@
 import { Head, Link } from '@inertiajs/react';
-import { createColumnHelper, flexRender } from '@tanstack/react-table';
-import {
-    getCoreRowModel,
-    useLegacyTable,
-} from '@tanstack/react-table/legacy';
-import { useMemo } from 'react';
 import Heading from '@/components/heading';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
-import {
-    purchaseRequestStatusBadgeVariant,
-    purchaseRequestStatusLabel,
-} from '@/lib/purchase-request-status';
-import { edit, index } from '@/routes/budget/purchase-requests';
-import type { Paginated, PurchaseRequest, PurchaseRequestStatus } from '@/types';
+import { index as budgetIndex } from '@/routes/budget';
+import { edit, index as earmarkIndex } from '@/routes/budget/purchase-requests';
+import type { Paginated } from '@/types';
 
-const queueStatuses: PurchaseRequestStatus[] = [
-    'budget_office_review',
-    'ceo_approval',
-    'bac_evaluation',
-    'rejected',
-];
-
-const columnHelper = createColumnHelper<PurchaseRequest>();
-
-type Props = {
-    requests: Paginated<PurchaseRequest>;
-    filters: { status: PurchaseRequestStatus };
-    statusCounts: Partial<Record<PurchaseRequestStatus, number>>;
+type Row = {
+    id: number;
+    pr_number: string | null;
+    pr_title: string | null;
+    estimated_total: string;
+    requester?: { name: string } | null;
 };
 
-export default function BudgetPurchaseRequestsIndex({
-    requests,
-    filters,
-    statusCounts,
-}: Props) {
-    const columns = useMemo(
-        () => [
-            columnHelper.accessor('pr_number', {
-                header: 'PR number',
-                cell: (info) => (
-                    <span className="font-medium">{info.getValue()}</span>
-                ),
-            }),
-            columnHelper.accessor((row) => row.department?.name ?? '—', {
-                id: 'department',
-                header: 'Department',
-            }),
-            columnHelper.accessor((row) => row.requester?.name ?? '—', {
-                id: 'requester',
-                header: 'Requester',
-            }),
-            columnHelper.accessor('purpose', { header: 'Purpose' }),
-            columnHelper.accessor('estimated_total', {
-                header: 'Estimated',
-                cell: (info) => (
-                    <span className="tabular-nums">{info.getValue()}</span>
-                ),
-            }),
-            columnHelper.accessor('status', {
-                header: 'Status',
-                cell: (info) => (
-                    <Badge
-                        variant={purchaseRequestStatusBadgeVariant(
-                            info.getValue(),
-                        )}
-                    >
-                        {purchaseRequestStatusLabel(info.getValue())}
-                    </Badge>
-                ),
-            }),
-            columnHelper.display({
-                id: 'actions',
-                header: '',
-                cell: (info) => (
-                    <Button variant="outline" size="sm" asChild>
-                        <Link href={edit(info.row.original.id)}>Open</Link>
-                    </Button>
-                ),
-            }),
-        ],
-        [],
-    );
+type Props = { purchaseRequests: Paginated<Row> };
 
-    const table = useLegacyTable({
-        data: requests.data,
-        columns,
-        getCoreRowModel: getCoreRowModel(),
-    });
-
+export default function BudgetPurchaseRequestIndex({ purchaseRequests }: Props) {
     return (
         <>
-            <Head title="Budget purchase requests" />
-
+            <Head title="Budget earmark queue" />
             <div className="flex flex-1 flex-col gap-6 p-4">
-                <Heading
-                    title="Purchase requests"
-                    description="Earmark department requests and send them to the Executive Officer."
-                />
-
-                <div className="flex flex-wrap gap-1">
-                    {queueStatuses.map((status) => (
-                        <Button
-                            key={status}
-                            variant={
-                                status === filters.status ? 'default' : 'ghost'
-                            }
-                            size="sm"
-                            asChild
-                        >
-                            <Link href={index({ query: { status } }).url}>
-                                {purchaseRequestStatusLabel(status)}
-                                <span className="text-muted-foreground ml-1.5 tabular-nums">
-                                    {statusCounts[status] ?? 0}
-                                </span>
-                            </Link>
-                        </Button>
-                    ))}
-                </div>
-
-                <div className="rounded-xl border">
-                    <Table>
-                        <TableHeader>
-                            {table.getHeaderGroups().map((headerGroup) => (
-                                <TableRow key={headerGroup.id}>
-                                    {headerGroup.headers.map((header) => (
-                                        <TableHead key={header.id}>
-                                            {header.isPlaceholder
-                                                ? null
-                                                : flexRender(
-                                                      header.column.columnDef
-                                                          .header,
-                                                      header.getContext(),
-                                                  )}
-                                        </TableHead>
-                                    ))}
-                                </TableRow>
+                <Heading title="Budget earmark queue" description="Approve or defer purchase requests." />
+                <div className="overflow-x-auto rounded-lg border">
+                    <table className="w-full text-sm">
+                        <thead className="bg-muted/50 text-left">
+                            <tr>
+                                <th className="px-3 py-2">PR</th>
+                                <th className="px-3 py-2">Title</th>
+                                <th className="px-3 py-2">Total</th>
+                                <th className="px-3 py-2">Requester</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {purchaseRequests.data.map((pr) => (
+                                <tr key={pr.id} className="border-t">
+                                    <td className="px-3 py-2">
+                                        <Link href={edit.url(pr.id)} className="text-primary underline-offset-4 hover:underline">
+                                            {pr.pr_number}
+                                        </Link>
+                                    </td>
+                                    <td className="px-3 py-2">{pr.pr_title}</td>
+                                    <td className="px-3 py-2">{pr.estimated_total}</td>
+                                    <td className="px-3 py-2">{pr.requester?.name}</td>
+                                </tr>
                             ))}
-                        </TableHeader>
-                        <TableBody>
-                            {table.getRowModel().rows.length === 0 && (
-                                <TableRow>
-                                    <TableCell
-                                        colSpan={columns.length}
-                                        className="text-muted-foreground py-10 text-center"
-                                    >
-                                        No{' '}
-                                        {purchaseRequestStatusLabel(
-                                            filters.status,
-                                        ).toLowerCase()}{' '}
-                                        requests.
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                            {table.getRowModel().rows.map((row) => (
-                                <TableRow key={row.id}>
-                                    {row.getVisibleCells().map((cell) => (
-                                        <TableCell key={cell.id}>
-                                            {flexRender(
-                                                cell.column.columnDef.cell,
-                                                cell.getContext(),
-                                            )}
-                                        </TableCell>
-                                    ))}
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </>
     );
 }
 
-BudgetPurchaseRequestsIndex.layout = {
-    breadcrumbs: [{ title: 'Budget requests', href: index() }],
+BudgetPurchaseRequestIndex.layout = {
+    breadcrumbs: [
+        { title: 'Budgets', href: budgetIndex() },
+        { title: 'Earmark queue', href: earmarkIndex() },
+    ],
 };

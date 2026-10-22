@@ -2,6 +2,7 @@
 
 use App\Models\Department;
 use App\Models\Position;
+use App\Models\Supplier;
 use App\Models\User;
 use Database\Seeders\CollegeSeeder;
 use Database\Seeders\ComprehensiveUserSeeder;
@@ -15,7 +16,8 @@ beforeEach(function () {
 test('the demo seed creates the positions, colleges and 22 users', function () {
     expect(Position::count())->toBe(count(PositionSeeder::POSITIONS))
         ->and(User::count())->toBe(22)
-        ->and(Department::count())->toBe(count(CollegeSeeder::COLLEGES) + 1);
+        ->and(Department::count())->toBe(count(CollegeSeeder::COLLEGES) + 1)
+        ->and(Supplier::count())->toBe(7);
 });
 
 test('every demo user is approved, active and verified', function () {
@@ -107,5 +109,6 @@ test('reseeding is idempotent', function () {
     $this->seed(DatabaseSeeder::class);
 
     expect(User::count())->toBe(22)
-        ->and(Department::count())->toBe(count(CollegeSeeder::COLLEGES) + 1);
+        ->and(Department::count())->toBe(count(CollegeSeeder::COLLEGES) + 1)
+        ->and(Supplier::count())->toBe(7);
 });

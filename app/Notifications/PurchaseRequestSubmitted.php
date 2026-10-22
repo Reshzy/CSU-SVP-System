@@ -25,12 +25,9 @@ class PurchaseRequestSubmitted extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject('New Purchase Request Submitted: '.$this->purchaseRequest->pr_number)
-            ->greeting('Hello Supply Office,')
-            ->line('A new Purchase Request has been submitted and is awaiting review.')
-            ->line('PR Number: '.$this->purchaseRequest->pr_number)
-            ->line('Purpose: '.$this->purchaseRequest->purpose)
-            ->action('Open PRs', url(route('supply.purchase-requests.index')))
-            ->line('Thank you.');
+            ->subject("New Purchase Request Submitted: {$this->purchaseRequest->pr_number}")
+            ->line("A new purchase request ({$this->purchaseRequest->pr_number}) has been submitted for Supply Office review.")
+            ->line("Purpose: {$this->purchaseRequest->purpose}")
+            ->action('Open Supply queue', url('/supply/purchase-requests'));
     }
 }

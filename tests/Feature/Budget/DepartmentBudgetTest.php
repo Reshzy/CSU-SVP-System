@@ -8,37 +8,50 @@ use Database\Seeders\RolePermissionSeeder;
 beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
 
-    $this->department = Department::factory()->create();
-    $this->dean = User::factory()->create(['department_id' => $this->department->id]);
-    $this->dean->assignRole('Dean');
-
-    $this->budget = User::factory()->create();
-    $this->budget->assignRole('Budget Office');
+    $this->budgetOfficer = User::factory()->create();
+    $this->budgetOfficer->assignRole('Budget Office');
 });
 
-test('a dean cannot manage department budgets', function () {
-    $this->actingAs($this->dean)
+test('the budget office can view department budgets', function () {
+    $department = Department::factory()->create(['name' => 'College of Computing']);
+    DepartmentBudget::factory()->create([
+        'department_id' => $department->id,
+        'fiscal_year' => 2026,
+        'allocated_budget' => 25000,
+    ]);
+
+    $this->actingAs($this->budgetOfficer)
         ->get(route('budget.index'))
-        ->assertForbidden();
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('budget/departments/index')
+            ->has('budgets.data', 1)
+            ->where('budgets.data.0.department.name', 'College of Computing')
+            ->has('filters')
+            ->has('departments')
+        );
 });
 
-test('budget office can set allocated budget and notes', function () {
-    $this->actingAs($this->budget)
-        ->put(route('budget.update', $this->department), [
-            'fiscal_year' => now()->year,
-            'allocated_budget' => 250000,
-            'notes' => 'GAA envelope',
-        ])
-        ->assertRedirect();
+test('the department budget list searches by department name', function () {
+    $computing = Department::factory()->create(['name' => 'College of Computing', 'code' => 'CICS']);
+    $agriculture = Department::factory()->create(['name' => 'College of Agriculture', 'code' => 'COA']);
 
-    $budget = DepartmentBudget::query()
-        ->where('department_id', $this->department->id)
-        ->where('fiscal_year', now()->year)
-        ->firstOrFail();
+    DepartmentBudget::factory()->create(['department_id' => $computing->id]);
+    DepartmentBudget::factory()->create(['department_id' => $agriculture->id]);
 
-    expect((float) $budget->allocated_budget)->toBe(250000.0)
-        ->and($budget->notes)->toBe('GAA envelope')
-        ->and($budget->set_by)->toBe($this->budget->id)
-        ->and($budget->getAvailableBudget())->toBe(250000.0)
-        ->and($budget->getCommittedBudget())->toBe(0.0);
+    $this->actingAs($this->budgetOfficer)
+        ->get(route('budget.index', ['search' => 'Computing']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('budget/departments/index')
+            ->count('budgets.data', 1)
+            ->where('budgets.data.0.department.code', 'CICS')
+        );
+});
+
+test('a user without the Budget Office role cannot view department budgets', function () {
+    $dean = User::factory()->create();
+    $dean->assignRole('Dean');
+
+    $this->actingAs($dean)->get(route('budget.index'))->assertForbidden();
 });

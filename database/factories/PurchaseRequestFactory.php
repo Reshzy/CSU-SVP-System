@@ -2,7 +2,6 @@
 
 namespace Database\Factories;
 
-use App\Enums\PurchaseRequestStatus;
 use App\Models\Department;
 use App\Models\PurchaseRequest;
 use App\Models\User;
@@ -14,28 +13,27 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 class PurchaseRequestFactory extends Factory
 {
     /**
-     * Define the model's default state.
-     *
      * @return array<string, mixed>
      */
     public function definition(): array
     {
         return [
-            'pr_number' => PurchaseRequest::generateNextPrNumber(),
+            'pr_title' => fake()->sentence(4),
             'department_id' => Department::factory(),
             'requester_id' => User::factory(),
-            'purpose' => fake()->sentence(4),
-            'justification' => fake()->sentence(),
-            'estimated_total' => 0,
-            'status' => PurchaseRequestStatus::SupplyOfficeReview,
+            'status' => 'supply_office_review',
             'is_archived' => false,
+            'purpose' => fake()->paragraph(),
+            'justification' => fake()->sentence(),
+            'date_needed' => now()->addWeeks(2)->toDateString(),
+            'estimated_total' => 0,
+            'fund_cluster_code' => '01',
+            'funding_source' => PurchaseRequest::formatFundingSourceFromFundCluster('01'),
             'has_ppmp' => true,
+            'submitted_at' => now(),
         ];
     }
 
-    /**
-     * A request whose reserved PPMP quantity has been released.
-     */
     public function archived(): static
     {
         return $this->state(fn (array $attributes) => [

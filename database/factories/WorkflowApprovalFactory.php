@@ -2,8 +2,6 @@
 
 namespace Database\Factories;
 
-use App\Enums\WorkflowApprovalStatus;
-use App\Enums\WorkflowStepName;
 use App\Models\PurchaseRequest;
 use App\Models\User;
 use App\Models\WorkflowApproval;
@@ -21,18 +19,11 @@ class WorkflowApprovalFactory extends Factory
     {
         return [
             'purchase_request_id' => PurchaseRequest::factory(),
-            'step_name' => WorkflowStepName::BudgetOfficeEarmarking,
+            'step_name' => 'budget_office_earmarking',
             'step_order' => 2,
             'approver_id' => User::factory(),
-            'status' => WorkflowApprovalStatus::Pending,
+            'status' => 'pending',
             'assigned_at' => now(),
         ];
-    }
-
-    public function pending(): static
-    {
-        return $this->state(fn (array $attributes) => [
-            'status' => WorkflowApprovalStatus::Pending,
-        ]);
     }
 }

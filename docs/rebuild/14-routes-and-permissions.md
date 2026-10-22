@@ -39,7 +39,7 @@ There is **no** `routes/api.php`. JSON budget endpoints live under the **web** `
 | `purchase-requests.index/create/store/show` | resource, only those four | no edit/update/destroy |
 | `purchase-requests.export` | GET `.../export` | own PR |
 | `purchase-requests.replacement.create/store` | `.../{originalPr}/replacement` | |
-| `ppmp.*` | `/ppmp` index, import, create, store, edit, update, validate, summary | |
+| `ppmp.*` | `/ppmp` index, import, create, store, edit, update, validate, summary, items.realign | |
 | `api.budget.check` | GET `/api/budget/check` | |
 | `api.budget.validate` | POST `/api/budget/validate` | |
 
@@ -123,6 +123,22 @@ Meetings: `bac.meetings.index/create/store/show`
 - `QuotationController` (AOQ prototype)
 
 ---
+
+## Rebuild mapping
+
+Incumbent names that are not aliased 1:1. `tests/Feature/NamedRoutesTest.php` asserts the rebuild names.
+
+| Incumbent | Rebuild |
+|-----------|---------|
+| Unnamed `GET /` | `home` |
+| `budget.edit` / `budget.show` | Inline table on `budget.index` (`budget.store` / `budget.update`) |
+| `budget.purchase-requests.amend` | `budget.purchase-requests.amend-earmark` |
+| POST `login` / `register` | Fortify `login.store` / `register.store` |
+| POST password reset `password.store` | Fortify `password.update` |
+
+Kept extra: `ceo.users.id-proof` (Slice 1 stand-in). Canonical download is `files.show`; CEO ID-proof links use `files.show`. The old route remains so existing tests still pass.
+
+Unwired file-15 URLs stay 404: `/suppliers/register`, quotations submit, po-status, contact.
 
 ## Acceptance criteria
 

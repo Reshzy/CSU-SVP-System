@@ -1,20 +1,33 @@
 <?php
 
+use App\Http\Controllers\Accounting\DisbursementVoucherController;
 use App\Http\Controllers\Api\BudgetCheckController;
 use App\Http\Controllers\AppConsolidationController;
 use App\Http\Controllers\AppItemController;
 use App\Http\Controllers\Auth\DepartmentRequestController;
+use App\Http\Controllers\Auth\DevLoginController;
+use App\Http\Controllers\Bac\ItemGroupController as BacItemGroupController;
+use App\Http\Controllers\Bac\MeetingController as BacMeetingController;
+use App\Http\Controllers\Bac\QuotationController as BacQuotationController;
+use App\Http\Controllers\Bac\SignatoryController as BacSignatoryController;
 use App\Http\Controllers\Budget\DepartmentBudgetController;
-use App\Http\Controllers\Budget\PurchaseRequestController as BudgetPurchaseRequestController;
+use App\Http\Controllers\Budget\EarmarkController;
 use App\Http\Controllers\Ceo\DepartmentController as CeoDepartmentController;
 use App\Http\Controllers\Ceo\DepartmentRequestController as CeoDepartmentRequestController;
 use App\Http\Controllers\Ceo\PurchaseRequestController as CeoPurchaseRequestController;
 use App\Http\Controllers\Ceo\UserIdProofController;
 use App\Http\Controllers\Ceo\UserManagementController;
+use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\PpmpController;
 use App\Http\Controllers\PurchaseRequestController;
+use App\Http\Controllers\PurchaseRequestReplacementController;
+use App\Http\Controllers\ReportsController;
+use App\Http\Controllers\Supply\InventoryReceiptController;
+use App\Http\Controllers\Supply\PoSignatoryController;
+use App\Http\Controllers\Supply\PurchaseOrderController;
 use App\Http\Controllers\Supply\PurchaseRequestController as SupplyPurchaseRequestController;
+use App\Http\Controllers\Supply\SupplierController;
 use Illuminate\Foundation\Http\Middleware\HandlePrecognitiveRequests;
 use Illuminate\Support\Facades\Route;
 
@@ -29,11 +42,117 @@ Route::middleware('guest')->group(function () {
         ->name('register.request-department');
     Route::post('register/request-department', [DepartmentRequestController::class, 'store'])
         ->name('register.request-department.store');
+
+    Route::post('dev/login/{user}', [DevLoginController::class, 'store'])
+        ->name('dev.login');
 });
 
 Route::middleware(['auth', 'verified', 'approved'])->group(function () {
     Route::inertia('dashboard', 'dashboard')->name('dashboard');
     Route::inertia('ui-kit', 'ui-kit')->name('ui-kit');
+
+    Route::prefix('purchase-requests')->name('purchase-requests.')->group(function () {
+        Route::get('/', [PurchaseRequestController::class, 'index'])->name('index');
+        Route::get('create', [PurchaseRequestController::class, 'create'])->name('create');
+        Route::post('/', [PurchaseRequestController::class, 'store'])
+            ->middleware(HandlePrecognitiveRequests::class)
+            ->name('store');
+        Route::get('{purchaseRequest}', [PurchaseRequestController::class, 'show'])->name('show');
+        Route::get('{purchaseRequest}/export', [PurchaseRequestController::class, 'export'])->name('export');
+        Route::get('{purchaseRequest}/replacement/create', [PurchaseRequestReplacementController::class, 'create'])
+            ->name('replacement.create');
+        Route::post('{purchaseRequest}/replacement', [PurchaseRequestReplacementController::class, 'store'])
+            ->name('replacement.store');
+    });
+
+    Route::middleware('can:edit-purchase-request')->prefix('supply')->name('supply.')->group(function () {
+        Route::get('purchase-requests', [SupplyPurchaseRequestController::class, 'index'])
+            ->name('purchase-requests.index');
+        Route::get('purchase-requests/{purchaseRequest}', [SupplyPurchaseRequestController::class, 'show'])
+            ->name('purchase-requests.show');
+        Route::post('purchase-requests/{purchaseRequest}/status', [SupplyPurchaseRequestController::class, 'updateStatus'])
+            ->name('purchase-requests.status');
+        Route::post('purchase-requests/{purchaseRequest}/lots', [SupplyPurchaseRequestController::class, 'storeLot'])
+            ->name('purchase-requests.lots.store');
+        Route::put('purchase-requests/{purchaseRequest}/lots/{lot}', [SupplyPurchaseRequestController::class, 'updateLot'])
+            ->name('purchase-requests.lots.update');
+        Route::delete('purchase-requests/{purchaseRequest}/lots/{lot}', [SupplyPurchaseRequestController::class, 'destroyLot'])
+            ->name('purchase-requests.lots.destroy');
+        Route::get('purchase-requests/{purchaseRequest}/export', [SupplyPurchaseRequestController::class, 'export'])
+            ->name('purchase-requests.export');
+
+        Route::get('purchase-orders', [PurchaseOrderController::class, 'index'])
+            ->name('purchase-orders.index');
+        Route::get('purchase-requests/{purchaseRequest}/purchase-orders/preview', [PurchaseOrderController::class, 'preview'])
+            ->name('purchase-orders.preview');
+        Route::get('purchase-requests/{purchaseRequest}/purchase-orders/batch-create', [PurchaseOrderController::class, 'batchCreate'])
+            ->name('purchase-orders.batch-create');
+        Route::post('purchase-requests/{purchaseRequest}/purchase-orders/batch', [PurchaseOrderController::class, 'batchStore'])
+            ->name('purchase-orders.batch-store');
+        Route::get('purchase-requests/{purchaseRequest}/purchase-orders/create', [PurchaseOrderController::class, 'create'])
+            ->name('purchase-orders.create');
+        Route::post('purchase-requests/{purchaseRequest}/purchase-orders', [PurchaseOrderController::class, 'store'])
+            ->name('purchase-orders.store');
+        Route::get('purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'show'])
+            ->name('purchase-orders.show');
+        Route::get('purchase-orders/{purchaseOrder}/edit', [PurchaseOrderController::class, 'edit'])
+            ->name('purchase-orders.edit');
+        Route::put('purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'update'])
+            ->name('purchase-orders.update');
+        Route::get('purchase-orders/{purchaseOrder}/export', [PurchaseOrderController::class, 'export'])
+            ->name('purchase-orders.export');
+
+        Route::resource('po-signatories', PoSignatoryController::class)
+            ->except(['show'])
+            ->parameters(['po-signatories' => 'poSignatory']);
+
+        Route::get('inventory-receipts', [InventoryReceiptController::class, 'index'])
+            ->name('inventory-receipts.index');
+        Route::get('purchase-orders/{purchaseOrder}/inventory-receipts/create', [InventoryReceiptController::class, 'create'])
+            ->name('inventory-receipts.create');
+        Route::post('purchase-orders/{purchaseOrder}/inventory-receipts', [InventoryReceiptController::class, 'store'])
+            ->name('inventory-receipts.store');
+        Route::get('inventory-receipts/{inventoryReceipt}', [InventoryReceiptController::class, 'show'])
+            ->name('inventory-receipts.show');
+    });
+
+    Route::middleware('role:Accounting Office')->prefix('accounting')->name('accounting.')->group(function () {
+        Route::get('vouchers', [DisbursementVoucherController::class, 'index'])->name('vouchers.index');
+        Route::get('purchase-orders/{purchaseOrder}/vouchers/create', [DisbursementVoucherController::class, 'create'])
+            ->name('vouchers.create');
+        Route::post('purchase-orders/{purchaseOrder}/vouchers', [DisbursementVoucherController::class, 'store'])
+            ->name('vouchers.store');
+        Route::get('vouchers/{voucher}', [DisbursementVoucherController::class, 'show'])->name('vouchers.show');
+        Route::put('vouchers/{voucher}', [DisbursementVoucherController::class, 'update'])->name('vouchers.update');
+    });
+
+    Route::get('files/{document}', [DocumentController::class, 'show'])->name('files.show');
+
+    Route::middleware('can:view-reports')->prefix('reports')->name('reports.')->group(function () {
+        Route::get('pr', [ReportsController::class, 'pr'])->name('pr');
+        Route::get('pr/export', [ReportsController::class, 'prExport'])->name('pr.export');
+        Route::get('analytics', [ReportsController::class, 'analytics'])->name('analytics');
+        Route::get('suppliers', [ReportsController::class, 'suppliers'])->name('suppliers');
+        Route::get('suppliers/export', [ReportsController::class, 'suppliersExport'])->name('suppliers.export');
+        Route::get('budget', [ReportsController::class, 'budget'])->name('budget');
+        Route::get('budget/export', [ReportsController::class, 'budgetExport'])->name('budget.export');
+        Route::get('custom', [ReportsController::class, 'custom'])->name('custom');
+        Route::get('custom/export', [ReportsController::class, 'customExport'])->name('custom.export');
+    });
+
+    Route::middleware('can:manage-suppliers')->prefix('supply')->name('supply.')->group(function () {
+        Route::get('suppliers', [SupplierController::class, 'index'])->name('suppliers.index');
+        Route::get('suppliers/create', [SupplierController::class, 'create'])->name('suppliers.create');
+        Route::post('suppliers', [SupplierController::class, 'store'])->name('suppliers.store');
+        Route::get('suppliers/{supplier}/edit', [SupplierController::class, 'edit'])->name('suppliers.edit');
+        Route::put('suppliers/{supplier}', [SupplierController::class, 'update'])->name('suppliers.update');
+    });
+
+    Route::middleware('role:Executive Officer')->post('supply/suppliers/{supplier}/approve', [SupplierController::class, 'approve'])
+        ->name('supply.suppliers.approve');
+
+    Route::get('api/budget/check', [BudgetCheckController::class, 'check'])->name('api.budget.check');
+    Route::post('api/budget/validate', [BudgetCheckController::class, 'validateAmount'])->name('api.budget.validate');
 
     // Planning is open to every approved user; PpmpPolicy scopes each plan to
     // the department that owns it.
@@ -46,6 +165,9 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
         Route::get('{ppmp}/edit', [PpmpController::class, 'edit'])->name('edit');
         Route::put('{ppmp}', [PpmpController::class, 'update'])->name('update');
         Route::post('{ppmp}/validate', [PpmpController::class, 'validate'])->name('validate');
+        Route::post('{ppmp}/items/{item}/realign', [PpmpController::class, 'realign'])
+            ->scopeBindings()
+            ->name('items.realign');
         Route::get('{ppmp}/summary', [PpmpController::class, 'summary'])->name('summary');
     });
 
@@ -59,39 +181,85 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
         ->middleware('can:view-consolidated-app')
         ->name('bac.app.index');
 
-    Route::resource('purchase-requests', PurchaseRequestController::class)
-        ->only(['index', 'create', 'show']);
-    Route::post('purchase-requests', [PurchaseRequestController::class, 'store'])
-        ->middleware(HandlePrecognitiveRequests::class)
-        ->name('purchase-requests.store');
+    Route::middleware('role:BAC Chair|BAC Members|BAC Secretariat')->prefix('bac')->name('bac.')->group(function () {
+        Route::get('item-groups/{purchaseRequest}/create', [BacItemGroupController::class, 'create'])->name('item-groups.create');
+        Route::post('item-groups/{purchaseRequest}', [BacItemGroupController::class, 'store'])->name('item-groups.store');
+        Route::get('item-groups/{purchaseRequest}/edit', [BacItemGroupController::class, 'edit'])->name('item-groups.edit');
+        Route::put('item-groups/{purchaseRequest}', [BacItemGroupController::class, 'update'])->name('item-groups.update');
+        Route::delete('item-groups/{purchaseRequest}', [BacItemGroupController::class, 'destroy'])->name('item-groups.destroy');
 
-    Route::get('api/budget/check', [BudgetCheckController::class, 'check'])
-        ->name('api.budget.check');
-    Route::post('api/budget/validate', [BudgetCheckController::class, 'validateAmount'])
-        ->name('api.budget.validate');
+        Route::post('item-groups/{itemGroup}/rfq/generate', [BacQuotationController::class, 'generateRfqForGroup'])->name('item-groups.rfq.generate');
+        Route::get('item-groups/{itemGroup}/rfq/download', [BacQuotationController::class, 'downloadRfqForGroup'])->name('item-groups.rfq.download');
+        Route::post('item-groups/{itemGroup}/rfq/regenerate', [BacQuotationController::class, 'regenerateRfqForGroup'])->name('item-groups.rfq.regenerate');
 
-    Route::get('purchase-requests/{originalPr}/replacement/create', [PurchaseRequestController::class, 'createReplacement'])
-        ->name('purchase-requests.replacement.create');
-    Route::post('purchase-requests/{originalPr}/replacement', [PurchaseRequestController::class, 'storeReplacement'])
-        ->middleware(HandlePrecognitiveRequests::class)
-        ->name('purchase-requests.replacement.store');
+        Route::post('item-groups/{itemGroup}/aoq/generate', [BacQuotationController::class, 'generateAoqForGroup'])->name('item-groups.aoq.generate');
+        Route::get('item-groups/{itemGroup}/aoq/download', [BacQuotationController::class, 'downloadAoqForGroup'])->name('item-groups.aoq.download');
 
-    Route::middleware('can:edit-purchase-request')->prefix('supply')->name('supply.')->group(function () {
-        Route::get('purchase-requests', [SupplyPurchaseRequestController::class, 'index'])
-            ->name('purchase-requests.index');
-        Route::get('purchase-requests/{purchase_request}', [SupplyPurchaseRequestController::class, 'show'])
-            ->name('purchase-requests.show');
-        Route::post('purchase-requests/{purchase_request}/status', [SupplyPurchaseRequestController::class, 'updateStatus'])
-            ->name('purchase-requests.status');
-        Route::post('purchase-requests/{purchase_request}/lots', [SupplyPurchaseRequestController::class, 'storeLot'])
-            ->name('purchase-requests.lots.store');
-        Route::put('purchase-requests/{purchase_request}/lots/{lot}', [SupplyPurchaseRequestController::class, 'updateLot'])
-            ->name('purchase-requests.lots.update');
-        Route::delete('purchase-requests/{purchase_request}/lots/{lot}', [SupplyPurchaseRequestController::class, 'destroyLot'])
-            ->name('purchase-requests.lots.destroy');
+        Route::get('quotations', [BacQuotationController::class, 'index'])->name('quotations.index');
+        Route::get('quotations/{purchaseRequest}/manage', [BacQuotationController::class, 'manage'])->name('quotations.manage');
+        Route::get('quotations/{purchaseRequest}/groups/{itemGroup}/quotations', [BacQuotationController::class, 'groupQuotations'])->name('quotations.group-quotations')->scopeBindings();
+        Route::post('quotations/{purchaseRequest}', [BacQuotationController::class, 'store'])->name('quotations.store');
+        Route::post('quotations/{quotation}/evaluate', [BacQuotationController::class, 'evaluate'])->name('quotations.evaluate');
+        Route::post('quotations/{purchaseRequest}/finalize', [BacQuotationController::class, 'finalize'])->name('quotations.finalize');
+
+        Route::get('quotations/{purchaseRequest}/resolution/download', [BacQuotationController::class, 'downloadResolution'])->name('quotations.resolution.download');
+        Route::post('quotations/{purchaseRequest}/resolution/regenerate', [BacQuotationController::class, 'regenerateResolution'])->name('quotations.resolution.regenerate');
+
+        Route::post('quotations/{purchaseRequest}/rfq/generate', [BacQuotationController::class, 'generateRfq'])->name('quotations.rfq.generate');
+        Route::get('quotations/{purchaseRequest}/rfq/download', [BacQuotationController::class, 'downloadRfq'])->name('quotations.rfq.download');
+        Route::post('quotations/{purchaseRequest}/rfq/regenerate', [BacQuotationController::class, 'regenerateRfq'])->name('quotations.rfq.regenerate');
+
+        Route::get('quotations/{purchaseRequest}/aoq', [BacQuotationController::class, 'aoq'])->name('quotations.aoq');
+        Route::post('quotations/{purchaseRequest}/aoq/generate', [BacQuotationController::class, 'generateAoq'])->name('quotations.aoq.generate');
+        Route::get('quotations/{purchaseRequest}/aoq/download', [BacQuotationController::class, 'downloadAoq'])->name('quotations.aoq.download');
+        Route::post('quotations/{purchaseRequest}/aoq/resolve-tie', [BacQuotationController::class, 'resolveTie'])->name('quotations.aoq.resolve-tie');
+        Route::post('quotations/{purchaseRequest}/aoq/bac-override', [BacQuotationController::class, 'bacOverride'])->name('quotations.aoq.bac-override');
+        Route::post('quotations/{purchaseRequest}/aoq/consolidated', [BacQuotationController::class, 'generateConsolidatedAoq'])->name('quotations.aoq.consolidated');
+
+        Route::post('quotation-items/{quotationItem}/withdraw', [BacQuotationController::class, 'processWithdrawal'])->name('quotation-items.withdraw');
+        Route::get('quotation-items/{quotationItem}/withdrawal-preview', [BacQuotationController::class, 'withdrawalPreview'])->name('quotation-items.withdrawal-preview');
+        Route::get('quotations/{purchaseRequest}/withdrawal-history', [BacQuotationController::class, 'withdrawalHistory'])->name('quotations.withdrawal-history');
+
+        Route::post('pr-items/{prItem}/mark-failed', [BacQuotationController::class, 'markItemFailed'])->name('pr-items.mark-failed');
+        Route::post('quotations/{purchaseRequest}/create-replacement-pr', [BacQuotationController::class, 'createReplacementPr'])->name('quotations.create-replacement-pr');
+
+        Route::get('meetings', [BacMeetingController::class, 'index'])->name('meetings.index');
+        Route::get('meetings/create', [BacMeetingController::class, 'create'])->name('meetings.create');
+        Route::post('meetings', [BacMeetingController::class, 'store'])->name('meetings.store');
+        Route::get('meetings/{meeting}', [BacMeetingController::class, 'show'])->name('meetings.show');
+    });
+
+    Route::middleware('role:System Admin|BAC Chair')->prefix('bac')->name('bac.')->group(function () {
+        Route::get('signatories', [BacSignatoryController::class, 'index'])->name('signatories.index');
+        Route::get('signatories/create', [BacSignatoryController::class, 'create'])->name('signatories.create');
+        Route::post('signatories', [BacSignatoryController::class, 'store'])->name('signatories.store');
+        Route::get('signatories/{signatory}/edit', [BacSignatoryController::class, 'edit'])->name('signatories.edit');
+        Route::put('signatories/{signatory}', [BacSignatoryController::class, 'update'])->name('signatories.update');
+        Route::delete('signatories/{signatory}', [BacSignatoryController::class, 'destroy'])->name('signatories.destroy');
+    });
+
+    Route::middleware('role:Budget Office')->prefix('budget')->name('budget.')->group(function () {
+        Route::get('departments', [DepartmentBudgetController::class, 'index'])->name('index');
+        Route::post('departments', [DepartmentBudgetController::class, 'store'])->name('store');
+        Route::put('departments/{departmentBudget}', [DepartmentBudgetController::class, 'update'])->name('update');
+
+        Route::get('purchase-requests', [EarmarkController::class, 'index'])->name('purchase-requests.index');
+        Route::get('purchase-requests/{purchaseRequest}/edit', [EarmarkController::class, 'edit'])->name('purchase-requests.edit');
+        Route::put('purchase-requests/{purchaseRequest}', [EarmarkController::class, 'update'])
+            ->middleware(HandlePrecognitiveRequests::class)
+            ->name('purchase-requests.update');
+        Route::post('purchase-requests/{purchaseRequest}/reject', [EarmarkController::class, 'reject'])->name('purchase-requests.reject');
+        Route::patch('purchase-requests/{purchaseRequest}/amend-earmark', [EarmarkController::class, 'amend'])
+            ->middleware(HandlePrecognitiveRequests::class)
+            ->name('purchase-requests.amend-earmark');
+        Route::get('purchase-requests/{purchaseRequest}/export-earmark', [EarmarkController::class, 'export'])->name('purchase-requests.export-earmark');
     });
 
     Route::middleware('role:Executive Officer')->prefix('ceo')->name('ceo.')->group(function () {
+        Route::get('purchase-requests', [CeoPurchaseRequestController::class, 'index'])->name('purchase-requests.index');
+        Route::get('purchase-requests/{purchaseRequest}', [CeoPurchaseRequestController::class, 'show'])->name('purchase-requests.show');
+        Route::post('purchase-requests/{purchaseRequest}', [CeoPurchaseRequestController::class, 'update'])->name('purchase-requests.update');
+
         Route::get('users', [UserManagementController::class, 'index'])->name('users.index');
         Route::get('users/{user}', [UserManagementController::class, 'show'])->name('users.show');
         Route::post('users/{user}/approve', [UserManagementController::class, 'approve'])->name('users.approve');
@@ -112,37 +280,6 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
             ->name('department-requests.approve');
         Route::post('department-requests/{departmentRequest}/reject', [CeoDepartmentRequestController::class, 'reject'])
             ->name('department-requests.reject');
-
-        Route::get('purchase-requests', [CeoPurchaseRequestController::class, 'index'])
-            ->name('purchase-requests.index');
-        Route::get('purchase-requests/{purchase_request}', [CeoPurchaseRequestController::class, 'show'])
-            ->name('purchase-requests.show');
-        Route::post('purchase-requests/{purchase_request}', [CeoPurchaseRequestController::class, 'update'])
-            ->name('purchase-requests.update');
-    });
-
-    Route::middleware('can:approve-earmark')->prefix('budget')->name('budget.')->group(function () {
-        Route::get('departments', [DepartmentBudgetController::class, 'index'])->name('index');
-        Route::get('departments/{department}/edit', [DepartmentBudgetController::class, 'edit'])->name('edit');
-        Route::put('departments/{department}', [DepartmentBudgetController::class, 'update'])->name('update');
-        Route::get('departments/{department}', [DepartmentBudgetController::class, 'show'])->name('show');
-
-        Route::get('purchase-requests', [BudgetPurchaseRequestController::class, 'index'])
-            ->name('purchase-requests.index');
-        Route::get('purchase-requests/{purchase_request}/edit', [BudgetPurchaseRequestController::class, 'edit'])
-            ->name('purchase-requests.edit');
-        Route::put('purchase-requests/{purchase_request}', [BudgetPurchaseRequestController::class, 'update'])
-            ->middleware(HandlePrecognitiveRequests::class)
-            ->name('purchase-requests.update');
-        Route::post('purchase-requests/{purchase_request}/reject', [BudgetPurchaseRequestController::class, 'reject'])
-            ->name('purchase-requests.reject');
-        Route::get('purchase-requests/{purchase_request}/export-earmark', [BudgetPurchaseRequestController::class, 'exportEarmark'])
-            ->name('purchase-requests.export-earmark');
-        Route::get('purchase-requests/{purchase_request}/amend', [BudgetPurchaseRequestController::class, 'amend'])
-            ->name('purchase-requests.amend');
-        Route::patch('purchase-requests/{purchase_request}/amend-earmark', [BudgetPurchaseRequestController::class, 'amendEarmark'])
-            ->middleware(HandlePrecognitiveRequests::class)
-            ->name('purchase-requests.amend-earmark');
     });
 });
 

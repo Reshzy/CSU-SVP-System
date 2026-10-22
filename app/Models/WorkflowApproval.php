@@ -2,8 +2,6 @@
 
 namespace App\Models;
 
-use App\Enums\WorkflowApprovalStatus;
-use App\Enums\WorkflowStepName;
 use Database\Factories\WorkflowApprovalFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,20 +10,19 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
- * A pending (or later decided) office task on a purchase request.
+ * Pending or decided workflow step for a purchase request.
  *
  * @property int $id
  * @property int $purchase_request_id
- * @property WorkflowStepName $step_name
+ * @property string $step_name
  * @property int $step_order
  * @property int|null $approver_id
  * @property int|null $approved_by
- * @property WorkflowApprovalStatus $status
+ * @property string $status
  * @property string|null $comments
  * @property string|null $remarks
  * @property Carbon|null $assigned_at
- * @property Carbon|null $approved_at
- * @property Carbon|null $rejected_at
+ * @property Carbon|null $decided_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -39,8 +36,7 @@ use Illuminate\Support\Carbon;
     'comments',
     'remarks',
     'assigned_at',
-    'approved_at',
-    'rejected_at',
+    'decided_at',
 ])]
 class WorkflowApproval extends Model
 {
@@ -74,12 +70,9 @@ class WorkflowApproval extends Model
     protected function casts(): array
     {
         return [
-            'step_name' => WorkflowStepName::class,
-            'status' => WorkflowApprovalStatus::class,
             'step_order' => 'integer',
             'assigned_at' => 'datetime',
-            'approved_at' => 'datetime',
-            'rejected_at' => 'datetime',
+            'decided_at' => 'datetime',
         ];
     }
 }

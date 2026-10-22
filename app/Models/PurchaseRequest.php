@@ -2,11 +2,9 @@
 
 namespace App\Models;
 
-use App\Enums\PurchaseRequestStatus;
-use App\Observers\PurchaseRequestObserver;
 use Database\Factories\PurchaseRequestFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
-use Illuminate\Database\Eloquent\Attributes\ObservedBy;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -15,9 +13,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Carbon;
 
 /**
- * A department purchase request. New rows start at supply-office review;
- * the observer stamps the quarter, reserves the department envelope, and
- * writes the created/submitted timeline entries.
+ * Purchase request hub. Created at supply_office_review (not draft).
  *
  * @property int $id
  * @property string|null $pr_number
@@ -27,7 +23,10 @@ use Illuminate\Support\Carbon;
  * @property int|null $current_handler_id
  * @property int|null $returned_by
  * @property int|null $rejected_by
- * @property string $purpose
+ * @property string $status
+ * @property int|null $pr_quarter
+ * @property bool $is_archived
+ * @property string|null $purpose
  * @property string|null $justification
  * @property Carbon|null $date_needed
  * @property string $estimated_total
@@ -39,9 +38,6 @@ use Illuminate\Support\Carbon;
  * @property string|null $procurement_method
  * @property Carbon|null $procurement_method_set_at
  * @property int|null $procurement_method_set_by
- * @property PurchaseRequestStatus $status
- * @property int|null $pr_quarter
- * @property bool $is_archived
  * @property string|null $current_step_notes
  * @property bool $has_ppmp
  * @property string|null $ppmp_reference
@@ -50,7 +46,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $earmark_programs_activities
  * @property string|null $earmark_responsibility_center
  * @property Carbon|null $earmark_date_to
- * @property array<int, mixed>|null $earmark_object_expenditures
+ * @property array<int, array<string, mixed>>|null $earmark_object_expenditures
  * @property string|null $resolution_number
  * @property string|null $rfq_number
  * @property int|null $replaces_pr_id
@@ -74,6 +70,9 @@ use Illuminate\Support\Carbon;
     'current_handler_id',
     'returned_by',
     'rejected_by',
+    'status',
+    'pr_quarter',
+    'is_archived',
     'purpose',
     'justification',
     'date_needed',
@@ -86,9 +85,6 @@ use Illuminate\Support\Carbon;
     'procurement_method',
     'procurement_method_set_at',
     'procurement_method_set_by',
-    'status',
-    'pr_quarter',
-    'is_archived',
     'current_step_notes',
     'has_ppmp',
     'ppmp_reference',
@@ -111,71 +107,10 @@ use Illuminate\Support\Carbon;
     'rejected_at',
     'status_updated_at',
 ])]
-#[ObservedBy([PurchaseRequestObserver::class])]
 class PurchaseRequest extends Model
 {
     /** @use HasFactory<PurchaseRequestFactory> */
     use HasFactory;
-
-    /**
-     * Fund cluster codes shown on the earmark form and Excel.
-     *
-     * @var array<string, string>
-     */
-    public const FUND_CLUSTERS = [
-        '01' => 'Regular Agency Fund',
-        '05' => 'Off-Budgetary Fund',
-        '06' => 'Income Generating Enterprise',
-        '07' => 'Trust Receipts',
-    ];
-
-    /**
-     * Next control number for the given month: PR-MMYY-####.
-     */
-    public static function generateNextPrNumber(?Carbon $asOf = null): string
-    {
-        return static::generateNextControlNumber('pr_number', 'PR', $asOf);
-    }
-
-    /**
-     * Next earmark number for the given month: EM-MMYY-####.
-     */
-    public static function generateNextEarmarkId(?Carbon $asOf = null): string
-    {
-        return static::generateNextControlNumber('earmark_id', 'EM', $asOf);
-    }
-
-    /**
-     * Next BAC resolution number for the given month: RES-MMYY-####.
-     */
-    public static function generateNextResolutionNumber(?Carbon $asOf = null): string
-    {
-        return static::generateNextControlNumber('resolution_number', 'RES', $asOf);
-    }
-
-    /**
-     * Fund cluster codes 01/05/06/07 formatted for the earmark document.
-     */
-    public static function formatFundingSourceFromFundCluster(?string $code, ?string $details = null): string
-    {
-        $source = ($code !== null && isset(self::FUND_CLUSTERS[$code]))
-            ? $code.' - '.self::FUND_CLUSTERS[$code]
-            : (string) $code;
-
-        if (filled($details)) {
-            $source .= ' ('.$details.')';
-        }
-
-        return $source;
-    }
-
-    /**
-     * @return MorphMany<Document, $this>
-     */
-    public function documents(): MorphMany
-    {
-        return $this->morphMany(Document::class, 'documentable');
-    }
 
     /**
      * @return BelongsTo<Department, $this>
@@ -202,27 +137,21 @@ class PurchaseRequest extends Model
     }
 
     /**
-     * @return BelongsTo<User, $this>
-     */
-    public function returnedBy(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'returned_by');
-    }
-
-    /**
-     * @return BelongsTo<User, $this>
-     */
-    public function rejectedBy(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'rejected_by');
-    }
-
-    /**
      * @return HasMany<PurchaseRequestItem, $this>
      */
     public function items(): HasMany
     {
         return $this->hasMany(PurchaseRequestItem::class);
+    }
+
+    /**
+     * Quotable lines exclude lot children.
+     *
+     * @return HasMany<PurchaseRequestItem, $this>
+     */
+    public function quotableItems(): HasMany
+    {
+        return $this->items()->whereNull('parent_lot_id');
     }
 
     /**
@@ -242,221 +171,269 @@ class PurchaseRequest extends Model
     }
 
     /**
-     * @return BelongsTo<PurchaseRequest, $this>
+     * @return HasMany<PrItemGroup, $this>
      */
-    public function replacesPr(): BelongsTo
+    public function itemGroups(): HasMany
+    {
+        return $this->hasMany(PrItemGroup::class);
+    }
+
+    /**
+     * @return HasMany<Quotation, $this>
+     */
+    public function quotations(): HasMany
+    {
+        return $this->hasMany(Quotation::class);
+    }
+
+    /**
+     * @return HasMany<AoqGeneration, $this>
+     */
+    public function aoqGenerations(): HasMany
+    {
+        return $this->hasMany(AoqGeneration::class);
+    }
+
+    /**
+     * @return HasMany<PurchaseOrder, $this>
+     */
+    public function purchaseOrders(): HasMany
+    {
+        return $this->hasMany(PurchaseOrder::class);
+    }
+
+    /**
+     * @return MorphMany<Document, $this>
+     */
+    public function documents(): MorphMany
+    {
+        return $this->morphMany(Document::class, 'documentable');
+    }
+
+    /**
+     * @return BelongsTo<self, $this>
+     */
+    public function replaces(): BelongsTo
     {
         return $this->belongsTo(self::class, 'replaces_pr_id');
     }
 
     /**
-     * @return BelongsTo<PurchaseRequest, $this>
+     * @return BelongsTo<self, $this>
      */
-    public function replacedByPr(): BelongsTo
+    public function replacedBy(): BelongsTo
     {
         return $this->belongsTo(self::class, 'replaced_by_pr_id');
     }
 
-    public function canManageLots(): bool
+    public static function generateNextPrNumber(?Carbon $at = null): string
     {
-        return in_array($this->status, [
-            PurchaseRequestStatus::Submitted,
-            PurchaseRequestStatus::SupplyOfficeReview,
-        ], true);
+        return static::generateNextNumber('PR', 'pr_number', $at);
+    }
+
+    public static function generateNextEarmarkId(?Carbon $at = null): string
+    {
+        return static::generateNextNumber('EM', 'earmark_id', $at);
+    }
+
+    public static function generateNextResolutionNumber(?Carbon $at = null): string
+    {
+        return static::generateNextNumber('RES', 'resolution_number', $at);
+    }
+
+    public static function generateNextRfqNumber(?Carbon $at = null): string
+    {
+        return static::generateNextNumber('RFQ', 'rfq_number', $at);
     }
 
     /**
-     * Supply Officer actions that are valid from the current status.
-     *
-     * @return list<string>
+     * Mint PREFIX-MMYY-#### using the highest existing sequence for that month.
      */
-    public function allowedSupplyActions(): array
+    public static function generateNextNumber(string $prefix, string $column, ?Carbon $at = null): string
     {
-        return match ($this->status) {
-            PurchaseRequestStatus::Submitted => ['start_review'],
-            PurchaseRequestStatus::SupplyOfficeReview => ['activate', 'return', 'reject', 'cancel'],
-            default => [],
-        };
-    }
+        $at ??= now();
+        $mmyy = $at->format('my');
+        $pattern = "{$prefix}-{$mmyy}-";
 
-    /**
-     * Budget Office actions that are valid from the current earmark state.
-     *
-     * @return list<string>
-     */
-    public function allowedBudgetActions(): array
-    {
-        $actions = [];
-
-        if ($this->status === PurchaseRequestStatus::BudgetOfficeReview) {
-            $actions[] = 'approve';
-            $actions[] = 'reject';
-        }
-
-        if ($this->canExportEarmark()) {
-            $actions[] = 'export';
-        }
-
-        if (filled($this->earmark_id)) {
-            $actions[] = 'amend';
-        }
-
-        return $actions;
-    }
-
-    /**
-     * Executive Officer actions that are valid from the current status.
-     *
-     * @return list<string>
-     */
-    public function allowedCeoActions(): array
-    {
-        return match ($this->status) {
-            PurchaseRequestStatus::CeoApproval => ['approve', 'reject'],
-            default => [],
-        };
-    }
-
-    public function canExportEarmark(): bool
-    {
-        return $this->status === PurchaseRequestStatus::BudgetOfficeReview
-            || filled($this->earmark_id);
-    }
-
-    /**
-     * Persist earmark columns and derive funding_source from the fund cluster.
-     *
-     * @param  array{
-     *     legal_basis: string,
-     *     earmark_programs_activities: string,
-     *     earmark_responsibility_center: string,
-     *     earmark_date_to: string,
-     *     earmark_object_expenditures: list<array{code?: string|null, description: string, amount: mixed}>,
-     *     fund_cluster_code: string,
-     *     fund_details?: string|null,
-     *     budget_code?: string|null,
-     *     current_step_notes?: string|null
-     * }  $fields
-     */
-    public function fillEarmarkFields(array $fields): void
-    {
-        $code = $fields['fund_cluster_code'];
-        $details = $fields['fund_details'] ?? null;
-
-        $this->forceFill([
-            'legal_basis' => $fields['legal_basis'],
-            'earmark_programs_activities' => $fields['earmark_programs_activities'],
-            'earmark_responsibility_center' => $fields['earmark_responsibility_center'],
-            'earmark_date_to' => $fields['earmark_date_to'],
-            'earmark_object_expenditures' => $fields['earmark_object_expenditures'],
-            'fund_cluster_code' => $code,
-            'fund_details' => $details,
-            'budget_code' => $fields['budget_code'] ?? null,
-            'current_step_notes' => $fields['current_step_notes'] ?? null,
-            'funding_source' => static::formatFundingSourceFromFundCluster($code, $details),
-        ]);
-    }
-
-    public function ensureEarmarkId(): string
-    {
-        if (filled($this->earmark_id)) {
-            return (string) $this->earmark_id;
-        }
-
-        $this->earmark_id = static::generateNextEarmarkId();
-
-        return $this->earmark_id;
-    }
-
-    /**
-     * Sum of quotable line qty × unit cost (lot headers and standalones).
-     * Falls back to the stored header total when items have not been written
-     * yet (the observer `created` hook).
-     */
-    public function calculateTotalCost(): float
-    {
-        $items = $this->relationLoaded('items')
-            ? $this->items
-            : $this->items()->get();
-
-        $quotable = $items->filter(
-            fn (PurchaseRequestItem $item): bool => $item->parent_lot_id === null,
-        );
-
-        if ($quotable->isNotEmpty()) {
-            return (float) $quotable->sum(
-                fn (PurchaseRequestItem $item): float => (float) $item->quantity_requested * (float) $item->estimated_unit_cost,
-            );
-        }
-
-        return (float) $this->estimated_total;
-    }
-
-    public function refreshEstimatedTotal(): void
-    {
-        $this->unsetRelation('items');
-        $this->forceFill(['estimated_total' => $this->calculateTotalCost()])->save();
-    }
-
-    /**
-     * Hold the request total against the department envelope for the
-     * calendar year the row was created.
-     */
-    public function reserveDepartmentBudget(): bool
-    {
-        return $this->departmentBudgetForCreatedYear()->reserveBudget($this->calculateTotalCost());
-    }
-
-    public function utilizeDepartmentBudget(): bool
-    {
-        return $this->departmentBudgetForCreatedYear()->utilizeBudget($this->calculateTotalCost());
-    }
-
-    public function releaseReservedBudget(): bool
-    {
-        return $this->departmentBudgetForCreatedYear()->releaseReservedBudget($this->calculateTotalCost());
-    }
-
-    private function departmentBudgetForCreatedYear(): DepartmentBudget
-    {
-        $fiscalYear = $this->created_at?->year ?? (int) date('Y');
-
-        return DepartmentBudget::getOrCreateForDepartment($this->department_id, $fiscalYear);
-    }
-
-    /**
-     * Sequential control number `{kind}-MMYY-####` for the given column.
-     */
-    private static function generateNextControlNumber(string $column, string $kind, ?Carbon $asOf = null): string
-    {
-        $asOf ??= now();
-        $prefix = $kind.'-'.$asOf->format('my').'-';
-
-        $last = static::query()
-            ->where($column, 'like', $prefix.'%')
+        $latest = static::query()
+            ->where($column, 'like', $pattern.'%')
             ->orderByDesc($column)
+            ->lockForUpdate()
             ->value($column);
 
-        $nextSequence = 1;
+        $sequence = 1;
 
-        if (is_string($last)) {
-            $parts = explode('-', $last);
-            $nextSequence = ((int) end($parts)) + 1;
+        if (is_string($latest) && preg_match('/-(\d{4})$/', $latest, $matches) === 1) {
+            $sequence = (int) $matches[1] + 1;
         }
 
-        return $prefix.str_pad((string) $nextSequence, 4, '0', STR_PAD_LEFT);
+        return $pattern.sprintf('%04d', $sequence);
+    }
+
+    public function calculateTotalCost(): float
+    {
+        return (float) $this->items
+            ->whereNull('parent_lot_id')
+            ->sum(function (PurchaseRequestItem $item): float {
+                return (float) $item->quantity_requested * (float) $item->estimated_unit_cost;
+            });
+    }
+
+    public function recalculateEstimatedTotal(): void
+    {
+        $this->estimated_total = $this->calculateTotalCost();
+        $this->save();
+    }
+
+    /**
+     * @return list<array{value: string, label: string}>
+     */
+    public static function fundClusterOptions(): array
+    {
+        return [
+            ['value' => '01', 'label' => '01 - Regular Agency Fund'],
+            ['value' => '05', 'label' => '05 - Off-Budgetary Funds'],
+            ['value' => '06', 'label' => '06 - Internally Generated Income (IGE)'],
+            ['value' => '07', 'label' => '07 - Trust Receipts'],
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function fundClusterCodes(): array
+    {
+        return array_column(self::fundClusterOptions(), 'value');
+    }
+
+    public static function formatFundingSourceFromFundCluster(?string $code): ?string
+    {
+        if ($code === null || $code === '') {
+            return null;
+        }
+
+        foreach (self::fundClusterOptions() as $option) {
+            if ($option['value'] === $code) {
+                return $option['label'];
+            }
+        }
+
+        return $code;
+    }
+
+    public function hasBeenThroughBac(): bool
+    {
+        return in_array($this->status, ['bac_evaluation', 'bac_approved', 'partial_po_generation', 'po_generation', 'po_approved', 'supplier_processing', 'delivered', 'completed'], true)
+            || filled($this->resolution_number)
+            || filled($this->procurement_method);
+    }
+
+    /**
+     * Minimum (earliest) group status mapped to a PR status. Null when ungrouped.
+     */
+    public function computeStatusFromGroups(): ?string
+    {
+        $groups = $this->itemGroups;
+
+        if ($groups->isEmpty()) {
+            return null;
+        }
+
+        $statusMap = [
+            'pending' => 'bac_evaluation',
+            'aoq_generated' => 'bac_approved',
+            'po_created' => 'partial_po_generation',
+            'all_po_approved' => 'po_approved',
+            'processing' => 'supplier_processing',
+            'delivered' => 'delivered',
+            'completed' => 'completed',
+        ];
+
+        $orderedKeys = array_keys($statusMap);
+        $minIndex = $groups
+            ->map(fn (PrItemGroup $group) => array_search($group->computeStatus(), $orderedKeys, true))
+            ->filter(fn (int|false $index): bool => $index !== false)
+            ->min();
+
+        $minGroupStatus = $orderedKeys[$minIndex] ?? 'pending';
+
+        return $statusMap[$minGroupStatus] ?? $this->status;
+    }
+
+    public function getEffectiveStatus(): string
+    {
+        return $this->computeStatusFromGroups() ?? $this->status;
+    }
+
+    public function syncStatusFromGroups(): void
+    {
+        $computed = $this->computeStatusFromGroups();
+
+        if ($computed === null || $this->status === $computed) {
+            return;
+        }
+
+        $this->status = $computed;
+        $this->status_updated_at = now();
+
+        if ($computed === 'completed') {
+            $this->completed_at = now();
+        }
+
+        $this->save();
+    }
+
+    public function canCreateAoq(): bool
+    {
+        $groups = $this->itemGroups;
+
+        if ($groups->isNotEmpty()) {
+            return $groups->contains(fn (PrItemGroup $group) => $group->canCreateAoq());
+        }
+
+        return $this->status === 'bac_evaluation';
+    }
+
+    public function canCreatePo(): bool
+    {
+        $groups = $this->itemGroups;
+
+        if ($groups->isNotEmpty()) {
+            return $groups->contains(fn (PrItemGroup $group) => $group->canCreatePo());
+        }
+
+        return in_array($this->status, ['bac_approved', 'bac_evaluation'], true);
+    }
+
+    public function canManageGroups(): bool
+    {
+        return in_array($this->getEffectiveStatus(), ['bac_evaluation', 'partial_po_generation'], true);
+    }
+
+    public function groupsAreLocked(): bool
+    {
+        return $this->itemGroups()
+            ->where(function (Builder $query): void {
+                $query->whereHas('rfqGeneration')
+                    ->orWhereHas('quotations')
+                    ->orWhereHas('aoqGeneration');
+            })
+            ->exists();
+    }
+
+    public function statusLabel(): string
+    {
+        return $this->status === 'rejected' ? 'Deferred' : str_replace('_', ' ', $this->status);
     }
 
     protected function casts(): array
     {
         return [
-            'status' => PurchaseRequestStatus::class,
             'is_archived' => 'boolean',
             'has_ppmp' => 'boolean',
-            'pr_quarter' => 'integer',
-            'estimated_total' => 'decimal:2',
             'date_needed' => 'date',
             'earmark_date_to' => 'date',
+            'estimated_total' => 'decimal:2',
             'earmark_object_expenditures' => 'array',
             'procurement_method_set_at' => 'datetime',
             'submitted_at' => 'datetime',
@@ -465,6 +442,7 @@ class PurchaseRequest extends Model
             'returned_at' => 'datetime',
             'rejected_at' => 'datetime',
             'status_updated_at' => 'datetime',
+            'pr_quarter' => 'integer',
         ];
     }
 }

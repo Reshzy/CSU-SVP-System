@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
- * One append-only timeline entry on a purchase request.
+ * Append-only activity row for a purchase request (no updated_at).
  *
  * @property int $id
  * @property int $purchase_request_id
@@ -17,7 +17,7 @@ use Illuminate\Support\Carbon;
  * @property string $action
  * @property array<string, mixed>|null $old_value
  * @property array<string, mixed>|null $new_value
- * @property string $description
+ * @property string|null $description
  * @property string|null $ip_address
  * @property string|null $user_agent
  * @property Carbon|null $created_at
@@ -32,11 +32,17 @@ use Illuminate\Support\Carbon;
     'description',
     'ip_address',
     'user_agent',
-    'created_at',
 ])]
 class PurchaseRequestActivity extends Model
 {
     public $timestamps = false;
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $activity): void {
+            $activity->created_at ??= now();
+        });
+    }
 
     /**
      * @return BelongsTo<PurchaseRequest, $this>

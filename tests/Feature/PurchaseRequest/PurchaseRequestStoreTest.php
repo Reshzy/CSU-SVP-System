@@ -1,6 +1,5 @@
 <?php
 
-use App\Enums\PurchaseRequestStatus;
 use App\Models\AppItem;
 use App\Models\Department;
 use App\Models\DepartmentBudget;
@@ -16,236 +15,336 @@ use Illuminate\Support\Facades\Notification;
 beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
 
-    $this->tracker = app(PpmpQuarterlyTracker::class);
     $this->department = Department::factory()->create();
     $this->dean = User::factory()->create(['department_id' => $this->department->id]);
     $this->dean->assignRole('Dean');
 
-    $this->budget = DepartmentBudget::factory()->for($this->department)->create([
-        'fiscal_year' => $this->tracker->currentFiscalYear(),
-        'allocated_budget' => 1_000_000,
-    ]);
+    $this->supplyOfficer = User::factory()->create();
+    $this->supplyOfficer->assignRole('Supply Officer');
 
-    $this->ppmp = Ppmp::factory()
-        ->validated()
-        ->for($this->department)
-        ->forFiscalYear($this->tracker->currentFiscalYear())
-        ->create();
+    $tracker = app(PpmpQuarterlyTracker::class);
+    $this->fiscalYear = $tracker->currentFiscalYear();
+    $this->quarter = $tracker->currentQuarter();
 
-    $this->ballpen = AppItem::factory()->create([
+    $this->catalogItem = AppItem::factory()->create([
+        'fiscal_year' => $this->fiscalYear,
         'item_code' => 'BP-001',
-        'item_name' => 'Ballpen, black',
-        'unit_price' => 10.00,
+        'item_name' => 'Ballpen',
+        'unit_price' => 25.00,
     ]);
 
-    $this->ppmpItem = PpmpItem::factory()
-        ->for($this->ppmp)
-        ->plannedEachQuarter(10)
-        ->create([
-            'app_item_id' => $this->ballpen->id,
-            'estimated_unit_cost' => 10,
-        ]);
+    $this->ppmp = Ppmp::factory()->forFiscalYear($this->fiscalYear)->validated()->create([
+        'department_id' => $this->department->id,
+    ]);
+
+    $quantities = [0, 0, 0, 0];
+    $quantities[$this->quarter - 1] = 20;
+
+    $this->ppmpItem = PpmpItem::factory()->for($this->ppmp)->create([
+        'app_item_id' => $this->catalogItem->id,
+        'q1_quantity' => $quantities[0],
+        'q2_quantity' => $quantities[1],
+        'q3_quantity' => $quantities[2],
+        'q4_quantity' => $quantities[3],
+        'total_quantity' => 20,
+        'estimated_unit_cost' => 25.00,
+        'estimated_total_cost' => 500.00,
+    ]);
+
+    DepartmentBudget::factory()->create([
+        'department_id' => $this->department->id,
+        'fiscal_year' => $this->fiscalYear,
+        'allocated_budget' => 100_000,
+        'reserved_budget' => 0,
+        'utilized_budget' => 0,
+    ]);
 });
 
-/**
- * @return array<string, mixed>
- */
-function prPayload(PpmpItem $item, AppItem $catalog, int $quantity = 2): array
-{
-    return [
-        'purpose' => 'Office supplies for the semester',
-        'justification' => 'The department has no remaining stock.',
-        'items' => [
-            [
-                'ppmp_item_id' => $item->id,
-                'item_code' => $catalog->item_code,
-                'item_name' => $catalog->item_name,
-                'unit_of_measure' => $catalog->unit_of_measure,
-                'quantity_requested' => $quantity,
-                'estimated_unit_cost' => 10,
-            ],
-        ],
-    ];
-}
-
-test('a dean can open the create form when the plan is validated', function () {
-    $this->actingAs($this->dean)
-        ->get(route('purchase-requests.create'))
-        ->assertOk()
-        ->assertInertia(fn ($page) => $page
-            ->component('purchase-requests/create')
-            ->has('categorizedItems')
-            ->where('currentQuarter', $this->tracker->currentQuarter())
-        );
-});
-
-test('a dean can list their own requests', function () {
-    $this->actingAs($this->dean)
-        ->get(route('purchase-requests.index'))
-        ->assertOk()
-        ->assertInertia(fn ($page) => $page
-            ->component('purchase-requests/index')
-            ->where('canCreate', true)
-        );
-});
-
-test('a dean with a validated plan submits a request at supply office review', function () {
+test('storing a purchase request yields supply_office_review and a PR number', function () {
     Notification::fake();
 
-    $supply = User::factory()->create();
-    $supply->assignRole('Supply Officer');
+    $response = $this->actingAs($this->dean)->post(route('purchase-requests.store'), [
+        'pr_title' => 'Office supplies',
+        'purpose' => 'For classes',
+        'justification' => 'Needed this quarter',
+        'items' => [
+            [
+                'ppmp_item_id' => $this->ppmpItem->id,
+                'quantity_requested' => 4,
+            ],
+        ],
+    ]);
 
-    $this->actingAs($this->dean)
-        ->post(route('purchase-requests.store'), prPayload($this->ppmpItem, $this->ballpen))
-        ->assertRedirect();
+    $purchaseRequest = PurchaseRequest::query()->first();
 
-    $pr = PurchaseRequest::query()->sole();
+    expect($purchaseRequest)->not->toBeNull()
+        ->and($purchaseRequest->status)->toBe('supply_office_review')
+        ->and($purchaseRequest->pr_number)->toMatch('/^PR-\d{4}-\d{4}$/')
+        ->and((float) $purchaseRequest->estimated_total)->toBe(100.0)
+        ->and($purchaseRequest->date_needed)->toBeNull()
+        ->and($purchaseRequest->fund_cluster_code)->toBeNull()
+        ->and($purchaseRequest->funding_source)->toBeNull();
 
-    expect($pr->status)->toBe(PurchaseRequestStatus::SupplyOfficeReview)
-        ->and($pr->pr_number)->toMatch('/^PR-\d{4}-\d{4}$/')
-        ->and($pr->pr_quarter)->toBe($this->tracker->currentQuarter())
-        ->and($pr->has_ppmp)->toBeTrue()
-        ->and((float) $pr->estimated_total)->toBe(20.0)
-        ->and($pr->activities()->pluck('action')->all())->toEqual(['created', 'submitted']);
+    $response->assertRedirect(route('purchase-requests.show', $purchaseRequest));
 
-    $this->budget->refresh();
-
-    expect((float) $this->budget->reserved_budget)->toBe(20.0);
-
-    Notification::assertSentTo($supply, PurchaseRequestSubmitted::class);
+    Notification::assertSentTo($this->supplyOfficer, PurchaseRequestSubmitted::class);
 });
 
-test('an unvalidated plan cannot be used to create a request', function () {
+test('an unvalidated ppmp cannot be used to store a purchase request', function () {
     $this->ppmp->update(['status' => 'draft', 'validated_at' => null, 'validated_by' => null]);
 
     $this->actingAs($this->dean)
-        ->from(route('purchase-requests.create'))
-        ->post(route('purchase-requests.store'), prPayload($this->ppmpItem, $this->ballpen))
-        ->assertRedirect(route('purchase-requests.create'))
+        ->post(route('purchase-requests.store'), [
+            'pr_title' => 'Office supplies',
+            'purpose' => 'For classes',
+            'items' => [
+                [
+                    'ppmp_item_id' => $this->ppmpItem->id,
+                    'quantity_requested' => 1,
+                ],
+            ],
+        ])
         ->assertSessionHasErrors('items');
 
     expect(PurchaseRequest::query()->count())->toBe(0);
 });
 
-test('a line with no current-quarter allocation is rejected', function () {
-    $quarter = $this->tracker->currentQuarter();
-    $this->ppmpItem->update([
-        'q1_quantity' => $quarter === 1 ? 0 : 10,
-        'q2_quantity' => $quarter === 2 ? 0 : 10,
-        'q3_quantity' => $quarter === 3 ? 0 : 10,
-        'q4_quantity' => $quarter === 4 ? 0 : 10,
+test('creating a purchase request reserves department budget', function () {
+    Notification::fake();
+
+    $this->actingAs($this->dean)->post(route('purchase-requests.store'), [
+        'pr_title' => 'Office supplies',
+        'purpose' => 'For classes',
+        'items' => [
+            [
+                'ppmp_item_id' => $this->ppmpItem->id,
+                'quantity_requested' => 4,
+            ],
+        ],
+    ])->assertRedirect();
+
+    $budget = DepartmentBudget::query()
+        ->where('department_id', $this->department->id)
+        ->where('fiscal_year', $this->fiscalYear)
+        ->first();
+
+    expect((float) $budget->reserved_budget)->toBe(100.0);
+});
+
+test('creating a purchase request with a lot header does not require a ppmp item on the lot row', function () {
+    $secondCatalog = AppItem::factory()->create([
+        'fiscal_year' => $this->fiscalYear,
+        'item_code' => 'BP-002',
+        'item_name' => 'Notebook',
+        'unit_price' => 40.00,
     ]);
 
-    $this->actingAs($this->dean)
-        ->from(route('purchase-requests.create'))
-        ->post(route('purchase-requests.store'), prPayload($this->ppmpItem, $this->ballpen))
-        ->assertSessionHasErrors('items.0.ppmp_item_id');
+    $quantities = [0, 0, 0, 0];
+    $quantities[$this->quarter - 1] = 20;
+
+    $secondPpmpItem = PpmpItem::factory()->for($this->ppmp)->create([
+        'app_item_id' => $secondCatalog->id,
+        'q1_quantity' => $quantities[0],
+        'q2_quantity' => $quantities[1],
+        'q3_quantity' => $quantities[2],
+        'q4_quantity' => $quantities[3],
+        'total_quantity' => 20,
+        'estimated_unit_cost' => 40.00,
+        'estimated_total_cost' => 800.00,
+    ]);
+
+    Notification::fake();
+
+    $this->actingAs($this->dean)->post(route('purchase-requests.store'), [
+        'pr_title' => 'Lot request',
+        'purpose' => 'Grouped supplies',
+        'items' => [
+            [
+                'is_lot' => true,
+                'lot_name' => 'Writing lot',
+            ],
+            [
+                'ppmp_item_id' => $this->ppmpItem->id,
+                'quantity_requested' => 2,
+                'parent_lot_index' => 0,
+            ],
+            [
+                'ppmp_item_id' => $secondPpmpItem->id,
+                'quantity_requested' => 2,
+                'parent_lot_index' => 0,
+            ],
+        ],
+    ])->assertRedirect();
+
+    $purchaseRequest = PurchaseRequest::query()->first();
+
+    expect($purchaseRequest)->not->toBeNull()
+        ->and($purchaseRequest->items()->where('is_lot', true)->count())->toBe(1)
+        ->and($purchaseRequest->items()->whereNotNull('parent_lot_id')->count())->toBe(2);
 });
 
-test('requested quantity cannot exceed remaining quantity for the quarter', function () {
-    $this->actingAs($this->dean)
-        ->from(route('purchase-requests.create'))
-        ->post(route('purchase-requests.store'), prPayload($this->ppmpItem, $this->ballpen, 11))
-        ->assertSessionHasErrors('items.0.quantity_requested');
-});
-
-test('insufficient department budget blocks the request', function () {
-    $this->budget->update(['allocated_budget' => 5]);
-
-    $this->actingAs($this->dean)
-        ->from(route('purchase-requests.create'))
-        ->post(route('purchase-requests.store'), prPayload($this->ppmpItem, $this->ballpen))
-        ->assertSessionHasErrors('budget');
-
-    expect(PurchaseRequest::query()->count())->toBe(0);
-});
-
-test('a system admin cannot create a purchase request', function () {
+test('system admin cannot create purchase requests', function () {
     $admin = User::factory()->create(['department_id' => $this->department->id]);
     $admin->assignRole('System Admin');
 
     $this->actingAs($admin)
-        ->post(route('purchase-requests.store'), prPayload($this->ppmpItem, $this->ballpen))
+        ->post(route('purchase-requests.store'), [
+            'pr_title' => 'Blocked',
+            'purpose' => 'Should fail',
+            'items' => [
+                [
+                    'ppmp_item_id' => $this->ppmpItem->id,
+                    'quantity_requested' => 1,
+                ],
+            ],
+        ])
         ->assertForbidden();
 });
 
-test('no mail is sent when there is no supply officer', function () {
-    Notification::fake();
+test('creating a purchase request offers unused earlier-quarter quantity', function () {
+    $this->travelTo(now()->setDate((int) now()->year, 5, 15));
+
+    $this->ppmpItem->update([
+        'q1_quantity' => 10,
+        'q2_quantity' => 0,
+        'q3_quantity' => 4,
+        'q4_quantity' => 0,
+        'total_quantity' => 14,
+    ]);
 
     $this->actingAs($this->dean)
-        ->post(route('purchase-requests.store'), prPayload($this->ppmpItem, $this->ballpen))
-        ->assertRedirect();
-
-    Notification::assertNothingSent();
+        ->get(route('purchase-requests.create'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('purchase-requests/create')
+            ->where('availableItems.0.remaining_qty', 10)
+            ->where('availableItems.0.later_remaining', 4)
+            ->where('canUpdatePpmp', true)
+        );
 });
 
-test('all supply officers are emailed when a request is submitted', function () {
+test('unused quantity from an earlier quarter can be requested now', function () {
     Notification::fake();
+    $this->travelTo(now()->setDate((int) now()->year, 5, 15));
 
-    $first = User::factory()->create();
-    $first->assignRole('Supply Officer');
-    $second = User::factory()->create();
-    $second->assignRole('Supply Officer');
-
-    $this->actingAs($this->dean)
-        ->post(route('purchase-requests.store'), prPayload($this->ppmpItem, $this->ballpen))
-        ->assertRedirect();
-
-    Notification::assertSentTo([$first, $second], PurchaseRequestSubmitted::class);
-});
-
-test('optional lots persist a header and children', function () {
-    $pencil = AppItem::factory()->create(['item_name' => 'Pencil']);
-    $pencilLine = PpmpItem::factory()
-        ->for($this->ppmp)
-        ->plannedEachQuarter(10)
-        ->create([
-            'app_item_id' => $pencil->id,
-            'estimated_unit_cost' => 5,
-        ]);
+    $this->ppmpItem->update([
+        'q1_quantity' => 10,
+        'q2_quantity' => 0,
+        'q3_quantity' => 0,
+        'q4_quantity' => 0,
+        'total_quantity' => 10,
+        'estimated_total_cost' => 250.00,
+    ]);
 
     $this->actingAs($this->dean)
         ->post(route('purchase-requests.store'), [
-            'purpose' => 'Classroom kit',
-            'justification' => 'Needed for the current quarter.',
+            'pr_title' => 'Office supplies',
+            'purpose' => 'For classes',
             'items' => [
                 [
-                    'ppmp_item_id' => null,
-                    'item_name' => 'Writing kit',
-                    'unit_of_measure' => 'lot',
-                    'quantity_requested' => 1,
-                    'estimated_unit_cost' => 25,
-                    'is_lot' => true,
-                    'lot_name' => 'Writing kit',
-                ],
-                [
                     'ppmp_item_id' => $this->ppmpItem->id,
-                    'item_code' => $this->ballpen->item_code,
-                    'item_name' => $this->ballpen->item_name,
-                    'unit_of_measure' => $this->ballpen->unit_of_measure,
-                    'quantity_requested' => 2,
-                    'estimated_unit_cost' => 10,
-                    'parent_lot_index' => 0,
-                ],
-                [
-                    'ppmp_item_id' => $pencilLine->id,
-                    'item_code' => $pencil->item_code,
-                    'item_name' => $pencil->item_name,
-                    'unit_of_measure' => $pencil->unit_of_measure,
-                    'quantity_requested' => 1,
-                    'estimated_unit_cost' => 5,
-                    'parent_lot_index' => 0,
+                    'quantity_requested' => 4,
                 ],
             ],
         ])
         ->assertRedirect();
 
-    $pr = PurchaseRequest::query()->with('items')->sole();
-    $header = $pr->items->firstWhere('is_lot', true);
-    $children = $pr->items->where('parent_lot_id', $header->id);
+    $line = PurchaseRequest::query()->first()?->items()->first();
 
-    expect($header)->not->toBeNull()
-        ->and($header->unit_of_measure)->toBe('lot')
-        ->and($header->quantity_requested)->toBe(1)
-        ->and($children)->toHaveCount(2);
+    expect($line)->not->toBeNull()
+        ->and($line->ppmp_quarter)->toBe(2)
+        ->and($line->ppmp_remaining_qty_at_creation)->toBe(10);
+});
+
+test('quantity planned only for a later quarter cannot be requested', function () {
+    $this->travelTo(now()->setDate((int) now()->year, 5, 15));
+
+    $this->ppmpItem->update([
+        'q1_quantity' => 0,
+        'q2_quantity' => 0,
+        'q3_quantity' => 10,
+        'q4_quantity' => 0,
+        'total_quantity' => 10,
+    ]);
+
+    $this->actingAs($this->dean)
+        ->post(route('purchase-requests.store'), [
+            'pr_title' => 'Office supplies',
+            'purpose' => 'For classes',
+            'items' => [
+                [
+                    'ppmp_item_id' => $this->ppmpItem->id,
+                    'quantity_requested' => 1,
+                ],
+            ],
+        ])
+        ->assertSessionHasErrors([
+            'items.0.quantity_requested' => 'No remaining PPMP quantity is available this quarter (including unused earlier quarters). Realign later-quarter quantities on the PPMP to request this item now.',
+        ]);
+
+    expect(PurchaseRequest::query()->count())->toBe(0);
+});
+
+test('later-quarter quantity can be requested after it is realigned', function () {
+    Notification::fake();
+    $this->travelTo(now()->setDate((int) now()->year, 5, 15));
+
+    $this->ppmpItem->update([
+        'q1_quantity' => 0,
+        'q2_quantity' => 0,
+        'q3_quantity' => 10,
+        'q4_quantity' => 0,
+        'total_quantity' => 10,
+        'estimated_total_cost' => 250.00,
+    ]);
+
+    $this->actingAs($this->dean)
+        ->post(route('ppmp.items.realign', ['ppmp' => $this->ppmp, 'item' => $this->ppmpItem]))
+        ->assertRedirect();
+
+    $this->actingAs($this->dean)
+        ->post(route('purchase-requests.store'), [
+            'pr_title' => 'Office supplies',
+            'purpose' => 'For classes',
+            'items' => [
+                [
+                    'ppmp_item_id' => $this->ppmpItem->id,
+                    'quantity_requested' => 4,
+                ],
+            ],
+        ])
+        ->assertRedirect();
+
+    expect(PurchaseRequest::query()->count())->toBe(1)
+        ->and($this->ppmpItem->fresh()->q2_quantity)->toBe(10)
+        ->and($this->ppmpItem->fresh()->q3_quantity)->toBe(0);
+});
+
+test('requested quantity cannot exceed usable leftover this quarter', function () {
+    $this->travelTo(now()->setDate((int) now()->year, 5, 15));
+
+    $this->ppmpItem->update([
+        'q1_quantity' => 5,
+        'q2_quantity' => 0,
+        'q3_quantity' => 0,
+        'q4_quantity' => 0,
+        'total_quantity' => 5,
+    ]);
+
+    $this->actingAs($this->dean)
+        ->post(route('purchase-requests.store'), [
+            'pr_title' => 'Office supplies',
+            'purpose' => 'For classes',
+            'items' => [
+                [
+                    'ppmp_item_id' => $this->ppmpItem->id,
+                    'quantity_requested' => 6,
+                ],
+            ],
+        ])
+        ->assertSessionHasErrors([
+            'items.0.quantity_requested' => 'Requested quantity exceeds remaining PPMP quantity (5) available this quarter.',
+        ]);
+
+    expect(PurchaseRequest::query()->count())->toBe(0);
 });

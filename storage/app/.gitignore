@@ -1,4 +1,11 @@
 *
 !private/
 !public/
+!templates/
+!templates/**
+templates/~$*
+!imports/
+!imports/**
+!temp/
+!temp/**
 !.gitignore

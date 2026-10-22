@@ -58,14 +58,6 @@ class Department extends Model
     }
 
     /**
-     * @return HasMany<DepartmentBudget, $this>
-     */
-    public function budgets(): HasMany
-    {
-        return $this->hasMany(DepartmentBudget::class);
-    }
-
-    /**
      * Departments a registering user may select.
      *
      * @param  Builder<$this>  $query

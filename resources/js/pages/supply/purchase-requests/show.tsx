@@ -1,633 +1,359 @@
-import { Form, Head, Link, router } from '@inertiajs/react';
-import { useMemo, useState } from 'react';
+import { Head, router, useForm } from '@inertiajs/react';
+import { useState } from 'react';
 import Heading from '@/components/heading';
+import { PrTimeline, type TimelineActivity } from '@/components/pr-timeline';
 import InputError from '@/components/input-error';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Spinner } from '@/components/ui/spinner';
+import { Textarea } from '@/components/ui/textarea';
 import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
-import {
-    purchaseRequestStatusBadgeVariant,
-    purchaseRequestStatusLabel,
-} from '@/lib/purchase-request-status';
-import { index, status } from '@/routes/supply/purchase-requests';
+    exportMethod,
+    index,
+    status,
+} from '@/routes/supply/purchase-requests';
 import {
     destroy as destroyLot,
     store as storeLot,
     update as updateLot,
 } from '@/routes/supply/purchase-requests/lots';
-import type {
-    PurchaseRequest,
-    PurchaseRequestItem,
-    SupplyAllowedAction,
-    SupplyStandaloneItem,
-} from '@/types';
+
+type Item = {
+    id: number;
+    item_name: string | null;
+    item_code: string | null;
+    is_lot: boolean;
+    lot_name: string | null;
+    parent_lot_id: number | null;
+    quantity_requested: number;
+    estimated_unit_cost: string;
+};
+
+type PurchaseRequest = {
+    id: number;
+    pr_number: string | null;
+    pr_title: string | null;
+    purpose: string | null;
+    status: string;
+    items: Item[];
+    activities: TimelineActivity[];
+};
 
 type Props = {
     purchaseRequest: PurchaseRequest;
+    statusLabel: string;
     canManageLots: boolean;
-    allowedActions: SupplyAllowedAction[];
-    standalones: SupplyStandaloneItem[];
 };
+
+const statusActions = [
+    'start_review',
+    'activate',
+    'return',
+    'reject',
+    'cancel',
+] as const;
 
 export default function SupplyPurchaseRequestShow({
     purchaseRequest,
+    statusLabel,
     canManageLots,
-    allowedActions,
-    standalones,
 }: Props) {
-    const items = purchaseRequest.items ?? [];
-    const lots = items.filter((item) => item.is_lot);
-    const canStartReview = allowedActions.includes('start_review');
-    const canActivate = allowedActions.includes('activate');
-    const canReturn = allowedActions.includes('return');
-    const canReject = allowedActions.includes('reject');
-    const canCancel = allowedActions.includes('cancel');
+    const statusForm = useForm({
+        action: purchaseRequest.status === 'submitted' ? 'start_review' : 'activate',
+        remarks: '',
+        rejection_reason: '',
+    });
+
+    const lotForm = useForm({
+        lot_name: '',
+        item_ids: [] as number[],
+    });
+
+    const [editingLotId, setEditingLotId] = useState<number | null>(null);
+
+    const lots = purchaseRequest.items.filter((item) => item.is_lot);
+    const standalones = purchaseRequest.items.filter(
+        (item) => !item.is_lot && !item.parent_lot_id,
+    );
+    const editingLot = lots.find((lot) => lot.id === editingLotId);
+    const selectableForEdit = purchaseRequest.items.filter(
+        (item) =>
+            !item.is_lot &&
+            (item.parent_lot_id === null || item.parent_lot_id === editingLotId),
+    );
 
     return (
         <>
-            <Head
-                title={purchaseRequest.pr_number ?? 'Purchase request'}
-            />
-
+            <Head title={purchaseRequest.pr_number ?? 'Supply PR'} />
             <div className="flex flex-1 flex-col gap-6 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                    <Heading
-                        title={purchaseRequest.pr_number ?? 'Purchase request'}
-                        description={`${purchaseRequest.department?.name ?? 'Department'} · ${purchaseRequest.requester?.name ?? 'Requester'} · Q${purchaseRequest.pr_quarter ?? '—'}`}
-                    />
-                    <div className="flex items-center gap-2">
-                        <Badge
-                            variant={purchaseRequestStatusBadgeVariant(
-                                purchaseRequest.status,
-                            )}
-                        >
-                            {purchaseRequestStatusLabel(purchaseRequest.status)}
-                        </Badge>
-                        <Button variant="outline" asChild>
-                            <Link href={index()}>Queue</Link>
-                        </Button>
-                    </div>
-                </div>
+                <Heading
+                    title={purchaseRequest.pr_number ?? `PR #${purchaseRequest.id}`}
+                    description={`${purchaseRequest.pr_title ?? ''} · ${statusLabel}`}
+                />
 
-                <div className="grid gap-4 md:grid-cols-2">
-                    <div className="rounded-xl border p-4">
-                        <h2 className="mb-2 text-sm font-medium">Purpose</h2>
-                        <p className="text-sm">{purchaseRequest.purpose}</p>
-                    </div>
-                    <div className="rounded-xl border p-4">
-                        <h2 className="mb-2 text-sm font-medium">
-                            Justification
-                        </h2>
-                        <p className="text-sm">
-                            {purchaseRequest.justification}
-                        </p>
-                    </div>
-                </div>
-
-                {purchaseRequest.return_remarks && (
-                    <p className="text-sm">
-                        <span className="text-muted-foreground">
-                            Return remarks:{' '}
-                        </span>
-                        {purchaseRequest.return_remarks}
-                    </p>
-                )}
-                {purchaseRequest.rejection_reason && (
-                    <p className="text-sm">
-                        <span className="text-muted-foreground">
-                            Deferral reason:{' '}
-                        </span>
-                        {purchaseRequest.rejection_reason}
-                    </p>
-                )}
-
-                <div className="rounded-xl border">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Item</TableHead>
-                                <TableHead>UOM</TableHead>
-                                <TableHead className="text-right">Qty</TableHead>
-                                <TableHead className="text-right">
-                                    Unit cost
-                                </TableHead>
-                                <TableHead className="text-right">
-                                    Total
-                                </TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {items.map((item) => (
-                                <TableRow key={item.id}>
-                                    <TableCell>
-                                        <div className="font-medium">
-                                            {item.is_lot
-                                                ? (item.lot_name ??
-                                                  item.item_name)
-                                                : item.item_name}
-                                        </div>
-                                        <div className="text-muted-foreground text-xs">
-                                            {item.is_lot
-                                                ? 'Lot'
-                                                : item.item_code}
-                                            {item.parent_lot_id
-                                                ? ' · in lot'
-                                                : ''}
-                                        </div>
-                                    </TableCell>
-                                    <TableCell>{item.unit_of_measure}</TableCell>
-                                    <TableCell className="text-right tabular-nums">
-                                        {item.quantity_requested}
-                                    </TableCell>
-                                    <TableCell className="text-right tabular-nums">
-                                        {item.estimated_unit_cost}
-                                    </TableCell>
-                                    <TableCell className="text-right tabular-nums">
-                                        {item.estimated_total_cost}
-                                    </TableCell>
-                                </TableRow>
+                <div className="grid gap-4 lg:grid-cols-2">
+                    <form
+                        className="space-y-3 rounded-lg border p-4"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            statusForm.post(status.url(purchaseRequest.id));
+                        }}
+                    >
+                        <h2 className="font-medium">Status actions</h2>
+                        <div className="flex flex-wrap gap-2">
+                            {statusActions.map((action) => (
+                                <Button
+                                    key={action}
+                                    type="button"
+                                    variant={
+                                        statusForm.data.action === action
+                                            ? 'default'
+                                            : 'outline'
+                                    }
+                                    onClick={() =>
+                                        statusForm.setData('action', action)
+                                    }
+                                >
+                                    {action === 'reject'
+                                        ? 'Defer'
+                                        : action.replaceAll('_', ' ')}
+                                </Button>
                             ))}
-                        </TableBody>
-                    </Table>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Remarks</Label>
+                            <Textarea
+                                value={statusForm.data.remarks}
+                                onChange={(event) =>
+                                    statusForm.setData(
+                                        'remarks',
+                                        event.target.value,
+                                    )
+                                }
+                            />
+                            <InputError message={statusForm.errors.remarks} />
+                        </div>
+                        <Button type="submit" disabled={statusForm.processing}>
+                            Apply
+                        </Button>
+                    </form>
+
+                    {canManageLots && (
+                        <form
+                            className="space-y-3 rounded-lg border p-4"
+                            onSubmit={(event) => {
+                                event.preventDefault();
+                                lotForm.post(storeLot.url(purchaseRequest.id));
+                            }}
+                        >
+                            <h2 className="font-medium">Create lot</h2>
+                            <div className="space-y-2">
+                                <Label>Lot name</Label>
+                                <Input
+                                    value={lotForm.data.lot_name}
+                                    onChange={(event) =>
+                                        lotForm.setData(
+                                            'lot_name',
+                                            event.target.value,
+                                        )
+                                    }
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Standalone items (min 2)</Label>
+                                {standalones.map((item) => (
+                                    <label
+                                        key={item.id}
+                                        className="flex items-center gap-2 text-sm"
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={lotForm.data.item_ids.includes(
+                                                item.id,
+                                            )}
+                                            onChange={(event) => {
+                                                const next = event.target.checked
+                                                    ? [
+                                                          ...lotForm.data.item_ids,
+                                                          item.id,
+                                                      ]
+                                                    : lotForm.data.item_ids.filter(
+                                                          (id) => id !== item.id,
+                                                      );
+                                                lotForm.setData('item_ids', next);
+                                            }}
+                                        />
+                                        {item.item_code} {item.item_name}
+                                    </label>
+                                ))}
+                                <InputError message={lotForm.errors.item_ids} />
+                            </div>
+                            <Button type="submit" disabled={lotForm.processing}>
+                                Create lot
+                            </Button>
+                        </form>
+                    )}
                 </div>
 
-                {canManageLots && (
-                    <LotManager
-                        purchaseRequest={purchaseRequest}
-                        lots={lots}
-                        items={items}
-                        standalones={standalones}
-                    />
-                )}
+                {canManageLots && lots.length > 0 && (
+                    <div className="space-y-3 rounded-lg border p-4">
+                        <h2 className="font-medium">Existing lots</h2>
+                        {lots.map((lot) => (
+                            <div
+                                key={lot.id}
+                                className="flex flex-wrap items-center justify-between gap-2 border-b py-2 last:border-b-0"
+                            >
+                                <p className="text-sm">{lot.lot_name}</p>
+                                <div className="flex gap-2">
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        type="button"
+                                        onClick={() => {
+                                            setEditingLotId(lot.id);
+                                            lotForm.setData({
+                                                lot_name: lot.lot_name ?? '',
+                                                item_ids: purchaseRequest.items
+                                                    .filter(
+                                                        (item) =>
+                                                            item.parent_lot_id ===
+                                                            lot.id,
+                                                    )
+                                                    .map((item) => item.id),
+                                            });
+                                        }}
+                                    >
+                                        Edit
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        type="button"
+                                        onClick={() =>
+                                            router.delete(
+                                                destroyLot.url({
+                                                    purchaseRequest:
+                                                        purchaseRequest.id,
+                                                    lot: lot.id,
+                                                }),
+                                            )
+                                        }
+                                    >
+                                        Remove
+                                    </Button>
+                                </div>
+                            </div>
+                        ))}
 
-                {(canStartReview ||
-                    canActivate ||
-                    canReturn ||
-                    canReject ||
-                    canCancel) && (
-                    <div className="grid max-w-5xl gap-6 lg:grid-cols-2">
-                        {canStartReview && (
-                            <ActionCard
-                                title="Start review"
-                                description="Move this legacy submitted request into Supply Office review."
-                                action="start_review"
-                                purchaseRequestId={purchaseRequest.id}
-                                buttonLabel="Start review"
-                            />
-                        )}
-                        {canActivate && (
-                            <ActionCard
-                                title="Activate"
-                                description="Send this request to Budget Office for earmarking."
-                                action="activate"
-                                purchaseRequestId={purchaseRequest.id}
-                                buttonLabel="Activate for Budget Office"
-                            />
-                        )}
-                        {canReturn && (
-                            <ActionCard
-                                title="Return to department"
-                                description="The requester can submit a replacement. Remarks are required."
-                                action="return"
-                                purchaseRequestId={purchaseRequest.id}
-                                buttonLabel="Return"
-                                remarksName="remarks"
-                                remarksLabel="Remarks"
-                                variant="outline"
-                            />
-                        )}
-                        {canReject && (
-                            <ActionCard
-                                title="Defer"
-                                description="Closes the request. The status is shown as Deferred."
-                                action="reject"
-                                purchaseRequestId={purchaseRequest.id}
-                                buttonLabel="Defer"
-                                remarksName="rejection_reason"
-                                remarksLabel="Reason"
-                                variant="destructive"
-                            />
-                        )}
-                        {canCancel && (
-                            <ActionCard
-                                title="Cancel"
-                                description="Stops this request and releases the reserved budget."
-                                action="cancel"
-                                purchaseRequestId={purchaseRequest.id}
-                                buttonLabel="Cancel"
-                                variant="outline"
-                            />
+                        {editingLot && (
+                            <form
+                                className="space-y-3"
+                                onSubmit={(event) => {
+                                    event.preventDefault();
+                                    lotForm.put(
+                                        updateLot.url({
+                                            purchaseRequest: purchaseRequest.id,
+                                            lot: editingLot.id,
+                                        }),
+                                    );
+                                }}
+                            >
+                                <Label>Update {editingLot.lot_name}</Label>
+                                <Input
+                                    value={lotForm.data.lot_name}
+                                    onChange={(event) =>
+                                        lotForm.setData(
+                                            'lot_name',
+                                            event.target.value,
+                                        )
+                                    }
+                                />
+                                {selectableForEdit.map((item) => (
+                                    <label
+                                        key={item.id}
+                                        className="flex items-center gap-2 text-sm"
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={lotForm.data.item_ids.includes(
+                                                item.id,
+                                            )}
+                                            onChange={(event) => {
+                                                const next = event.target.checked
+                                                    ? [
+                                                          ...lotForm.data.item_ids,
+                                                          item.id,
+                                                      ]
+                                                    : lotForm.data.item_ids.filter(
+                                                          (id) => id !== item.id,
+                                                      );
+                                                lotForm.setData('item_ids', next);
+                                            }}
+                                        />
+                                        {item.item_code} {item.item_name}
+                                    </label>
+                                ))}
+                                <div className="flex gap-2">
+                                    <Button type="submit">Save lot</Button>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        onClick={() => setEditingLotId(null)}
+                                    >
+                                        Cancel
+                                    </Button>
+                                </div>
+                            </form>
                         )}
                     </div>
                 )}
+
+                <div className="overflow-x-auto rounded-lg border">
+                    <table className="w-full text-sm">
+                        <thead className="bg-muted/50 text-left">
+                            <tr>
+                                <th className="px-3 py-2">Item</th>
+                                <th className="px-3 py-2">Qty</th>
+                                <th className="px-3 py-2">Unit cost</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {purchaseRequest.items.map((item) => (
+                                <tr key={item.id} className="border-t">
+                                    <td
+                                        className={`px-3 py-2 ${item.parent_lot_id ? 'pl-8' : ''}`}
+                                    >
+                                        {item.is_lot
+                                            ? item.lot_name
+                                            : `${item.item_code} ${item.item_name}`}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                        {item.quantity_requested}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                        {item.estimated_unit_cost}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+
+                <Button variant="outline" asChild>
+                    <a href={exportMethod.url(purchaseRequest.id)}>
+                        Export Excel
+                    </a>
+                </Button>
+
+                <div className="space-y-3">
+                    <h2 className="text-base font-medium">Activity timeline</h2>
+                    <PrTimeline activities={purchaseRequest.activities ?? []} />
+                </div>
             </div>
         </>
     );
 }
 
 SupplyPurchaseRequestShow.layout = {
-    breadcrumbs: [{ title: 'Supply requests', href: index() }],
+    breadcrumbs: [{ title: 'Supply queue', href: index() }],
 };
-
-function ActionCard({
-    title,
-    description,
-    action,
-    purchaseRequestId,
-    buttonLabel,
-    remarksName,
-    remarksLabel,
-    variant = 'default',
-}: {
-    title: string;
-    description: string;
-    action: SupplyAllowedAction;
-    purchaseRequestId: number;
-    buttonLabel: string;
-    remarksName?: 'remarks' | 'rejection_reason';
-    remarksLabel?: string;
-    variant?: 'default' | 'outline' | 'destructive';
-}) {
-    return (
-        <Card>
-            <CardHeader>
-                <CardTitle>{title}</CardTitle>
-                <CardDescription>{description}</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <Form
-                    {...status.form(purchaseRequestId)}
-                    disableWhileProcessing
-                    className="space-y-3"
-                >
-                    {({ processing, errors }) => (
-                        <>
-                            <input type="hidden" name="action" value={action} />
-                            {remarksName && (
-                                <div className="grid gap-2">
-                                    <Label htmlFor={`${action}-${remarksName}`}>
-                                        {remarksLabel}
-                                    </Label>
-                                    <Input
-                                        id={`${action}-${remarksName}`}
-                                        name={remarksName}
-                                        required
-                                    />
-                                    <InputError
-                                        message={errors[remarksName]}
-                                    />
-                                </div>
-                            )}
-                            <InputError message={errors.action} />
-                            <Button
-                                type="submit"
-                                variant={variant}
-                                data-test={`supply-${action}-button`}
-                            >
-                                {processing && <Spinner />}
-                                {buttonLabel}
-                            </Button>
-                        </>
-                    )}
-                </Form>
-            </CardContent>
-        </Card>
-    );
-}
-
-function LotManager({
-    purchaseRequest,
-    lots,
-    items,
-    standalones,
-}: {
-    purchaseRequest: PurchaseRequest;
-    lots: PurchaseRequestItem[];
-    items: PurchaseRequestItem[];
-    standalones: SupplyStandaloneItem[];
-}) {
-    return (
-        <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-sm font-medium">Lots</h2>
-                <CreateLotDialog
-                    purchaseRequestId={purchaseRequest.id}
-                    standalones={standalones}
-                />
-            </div>
-            {lots.length === 0 && (
-                <p className="text-muted-foreground text-sm">
-                    No lots yet. Group at least two standalone items into one
-                    bid line.
-                </p>
-            )}
-            {lots.map((lot) => {
-                const children = items.filter(
-                    (item) => item.parent_lot_id === lot.id,
-                );
-
-                return (
-                    <div
-                        key={lot.id}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3 text-sm"
-                    >
-                        <div>
-                            <p className="font-medium">
-                                {lot.lot_name ?? lot.item_name}
-                            </p>
-                            <p className="text-muted-foreground text-xs">
-                                {children.length} items ·{' '}
-                                {lot.estimated_total_cost}
-                            </p>
-                        </div>
-                        <div className="flex gap-2">
-                            <EditLotDialog
-                                purchaseRequestId={purchaseRequest.id}
-                                lot={lot}
-                                childrenItems={children}
-                                standalones={standalones}
-                            />
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() =>
-                                    router.delete(
-                                        destroyLot.url({
-                                            purchase_request:
-                                                purchaseRequest.id,
-                                            lot: lot.id,
-                                        }),
-                                    )
-                                }
-                            >
-                                Remove
-                            </Button>
-                        </div>
-                    </div>
-                );
-            })}
-        </div>
-    );
-}
-
-function CreateLotDialog({
-    purchaseRequestId,
-    standalones,
-}: {
-    purchaseRequestId: number;
-    standalones: SupplyStandaloneItem[];
-}) {
-    const [open, setOpen] = useState(false);
-    const [lotName, setLotName] = useState('');
-    const [selected, setSelected] = useState<number[]>([]);
-
-    const toggle = (id: number) => {
-        setSelected((current) =>
-            current.includes(id)
-                ? current.filter((value) => value !== id)
-                : [...current, id],
-        );
-    };
-
-    return (
-        <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-                <Button size="sm" disabled={standalones.length < 2}>
-                    Create lot
-                </Button>
-            </DialogTrigger>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Create lot</DialogTitle>
-                    <DialogDescription>
-                        Choose at least two standalone items. The lot is one
-                        bid line; children are not priced separately.
-                    </DialogDescription>
-                </DialogHeader>
-                <Form
-                    {...storeLot.form(purchaseRequestId)}
-                    disableWhileProcessing
-                    className="space-y-3"
-                    onSuccess={() => {
-                        setOpen(false);
-                        setLotName('');
-                        setSelected([]);
-                    }}
-                >
-                    {({ processing, errors }) => (
-                        <>
-                            <div className="grid gap-2">
-                                <Label htmlFor="lot_name">Lot name</Label>
-                                <Input
-                                    id="lot_name"
-                                    name="lot_name"
-                                    value={lotName}
-                                    onChange={(event) =>
-                                        setLotName(event.target.value)
-                                    }
-                                    required
-                                />
-                                <InputError message={errors.lot_name} />
-                            </div>
-                            <div className="grid gap-2">
-                                {standalones.map((item) => (
-                                    <label
-                                        key={item.id}
-                                        className="flex items-center gap-2 text-sm"
-                                    >
-                                        <Checkbox
-                                            checked={selected.includes(item.id)}
-                                            onCheckedChange={() =>
-                                                toggle(item.id)
-                                            }
-                                        />
-                                        {item.item_name}
-                                    </label>
-                                ))}
-                                {selected.map((id) => (
-                                    <input
-                                        key={id}
-                                        type="hidden"
-                                        name="item_ids[]"
-                                        value={id}
-                                    />
-                                ))}
-                                <InputError message={errors.item_ids} />
-                            </div>
-                            <DialogFooter>
-                                <Button
-                                    type="submit"
-                                    disabled={
-                                        processing || selected.length < 2
-                                    }
-                                >
-                                    {processing && <Spinner />}
-                                    Save lot
-                                </Button>
-                            </DialogFooter>
-                        </>
-                    )}
-                </Form>
-            </DialogContent>
-        </Dialog>
-    );
-}
-
-function EditLotDialog({
-    purchaseRequestId,
-    lot,
-    childrenItems,
-    standalones,
-}: {
-    purchaseRequestId: number;
-    lot: PurchaseRequestItem;
-    childrenItems: PurchaseRequestItem[];
-    standalones: SupplyStandaloneItem[];
-}) {
-    const candidates = useMemo(() => {
-        const childRows: SupplyStandaloneItem[] = childrenItems.map(
-            (item) => ({
-                id: item.id,
-                item_name: item.item_name,
-                item_code: item.item_code,
-                estimated_total_cost: item.estimated_total_cost,
-            }),
-        );
-
-        return [...childRows, ...standalones];
-    }, [childrenItems, standalones]);
-
-    const [open, setOpen] = useState(false);
-    const [lotName, setLotName] = useState(lot.lot_name ?? lot.item_name);
-    const [selected, setSelected] = useState<number[]>(
-        childrenItems.map((item) => item.id),
-    );
-
-    const toggle = (id: number) => {
-        setSelected((current) =>
-            current.includes(id)
-                ? current.filter((value) => value !== id)
-                : [...current, id],
-        );
-    };
-
-    return (
-        <Dialog
-            open={open}
-            onOpenChange={(next) => {
-                setOpen(next);
-                if (next) {
-                    setLotName(lot.lot_name ?? lot.item_name);
-                    setSelected(childrenItems.map((item) => item.id));
-                }
-            }}
-        >
-            <DialogTrigger asChild>
-                <Button size="sm" variant="outline">
-                    Edit
-                </Button>
-            </DialogTrigger>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Update lot</DialogTitle>
-                    <DialogDescription>
-                        Keep at least two items in the lot.
-                    </DialogDescription>
-                </DialogHeader>
-                <Form
-                    {...updateLot.form({
-                        purchase_request: purchaseRequestId,
-                        lot: lot.id,
-                    })}
-                    disableWhileProcessing
-                    className="space-y-3"
-                    onSuccess={() => setOpen(false)}
-                >
-                    {({ processing, errors }) => (
-                        <>
-                            <div className="grid gap-2">
-                                <Label htmlFor={`lot_name_${lot.id}`}>
-                                    Lot name
-                                </Label>
-                                <Input
-                                    id={`lot_name_${lot.id}`}
-                                    name="lot_name"
-                                    value={lotName}
-                                    onChange={(event) =>
-                                        setLotName(event.target.value)
-                                    }
-                                    required
-                                />
-                                <InputError message={errors.lot_name} />
-                            </div>
-                            <div className="grid gap-2">
-                                {candidates.map((item) => (
-                                    <label
-                                        key={item.id}
-                                        className="flex items-center gap-2 text-sm"
-                                    >
-                                        <Checkbox
-                                            checked={selected.includes(item.id)}
-                                            onCheckedChange={() =>
-                                                toggle(item.id)
-                                            }
-                                        />
-                                        {item.item_name}
-                                    </label>
-                                ))}
-                                {selected.map((id) => (
-                                    <input
-                                        key={id}
-                                        type="hidden"
-                                        name="item_ids[]"
-                                        value={id}
-                                    />
-                                ))}
-                                <InputError message={errors.item_ids} />
-                            </div>
-                            <DialogFooter>
-                                <Button
-                                    type="submit"
-                                    disabled={
-                                        processing || selected.length < 2
-                                    }
-                                >
-                                    {processing && <Spinner />}
-                                    Update lot
-                                </Button>
-                            </DialogFooter>
-                        </>
-                    )}
-                </Form>
-            </DialogContent>
-        </Dialog>
-    );
-}

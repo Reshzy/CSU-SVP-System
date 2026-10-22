@@ -3,10 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Concerns\FlashesToasts;
-use App\Enums\PurchaseRequestStatus;
+use App\Enums\PpmpStatus;
+use App\Http\Requests\ListQueryRequest;
 use App\Http\Requests\PurchaseRequest\StorePurchaseRequestRequest;
-use App\Http\Requests\PurchaseRequest\StoreReplacementPurchaseRequestRequest;
-use App\Models\DepartmentBudget;
 use App\Models\Ppmp;
 use App\Models\PpmpItem;
 use App\Models\PurchaseRequest;
@@ -14,357 +13,299 @@ use App\Models\PurchaseRequestItem;
 use App\Models\User;
 use App\Notifications\PurchaseRequestSubmitted;
 use App\Services\PpmpQuarterlyTracker;
-use App\Services\PurchaseRequestActivityLogger;
+use App\Services\PurchaseRequestExportService;
+use App\Support\ListQuery;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Notification;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class PurchaseRequestController extends Controller
 {
     use FlashesToasts;
 
-    public function index(Request $request): Response
+    public function index(ListQueryRequest $request): Response
     {
-        $user = $request->user();
-
         Gate::authorize('viewAny', PurchaseRequest::class);
 
-        $requests = PurchaseRequest::query()
-            ->where('requester_id', $user->id)
-            ->where('is_archived', false)
-            ->latest()
-            ->paginate(10)
-            ->withQueryString();
+        $user = $request->user();
+
+        $query = PurchaseRequest::query()
+            ->with(['department:id,name,code', 'requester:id,name']);
+
+        if (! $user->hasAnyRole(['Supply Officer', 'Budget Office', 'Executive Officer', 'BAC Chair', 'BAC Members', 'BAC Secretariat', 'System Admin'])) {
+            $query->where('department_id', $user->department_id);
+        }
+
+        $statusOptions = (clone $query)
+            ->reorder()
+            ->select('status')
+            ->distinct()
+            ->orderBy('status')
+            ->pluck('status')
+            ->map(fn (string $status): array => [
+                'value' => $status,
+                'label' => $status === 'rejected' ? 'Deferred' : str_replace('_', ' ', $status),
+            ])
+            ->values()
+            ->all();
 
         return Inertia::render('purchase-requests/index', [
-            'requests' => $requests,
-            'canCreate' => $user->canCreatePurchaseRequests() && $user->department_id !== null,
+            'purchaseRequests' => ListQuery::paginate($query, $request, [
+                'searchable' => ['pr_number', 'pr_title'],
+                'sortable' => [
+                    'pr_number' => 'pr_number',
+                    'pr_title' => 'pr_title',
+                    'status' => 'status',
+                    'estimated_total' => 'estimated_total',
+                    'created_at' => 'created_at',
+                ],
+                'equals' => ['status' => 'status'],
+                'dateColumn' => 'created_at',
+                'defaultSort' => 'created_at',
+                'defaultDirection' => 'desc',
+                'defaultPerPage' => 15,
+            ]),
+            'filters' => ListQuery::snapshot($request, [
+                'status' => $request->filled('status') ? $request->string('status')->value() : null,
+            ]),
+            'statusOptions' => $statusOptions,
+            'canCreate' => Gate::allows('create', PurchaseRequest::class),
         ]);
     }
 
     public function create(Request $request, PpmpQuarterlyTracker $tracker): Response
     {
-        $user = $this->userWhoCanCreate($request);
-
         Gate::authorize('create', PurchaseRequest::class);
 
-        $data = $this->preparePrCreationData($user, $tracker);
+        $user = $request->user();
+        $fiscalYear = $tracker->currentFiscalYear();
+        $quarter = $tracker->currentQuarter();
 
-        if ($data['ppmp'] === null) {
-            abort(403, 'Your department must have a validated PPMP before creating purchase requests.');
-        }
+        $ppmp = Ppmp::query()
+            ->where('department_id', $user->department_id)
+            ->where('fiscal_year', $fiscalYear)
+            ->where('status', PpmpStatus::Validated)
+            ->with(['items.appItem'])
+            ->first();
 
-        return Inertia::render('purchase-requests/create', $data);
+        $availableItems = $ppmp === null
+            ? []
+            : $ppmp->items->map(function (PpmpItem $item) use ($quarter) {
+                return [
+                    'id' => $item->id,
+                    'app_item_id' => $item->app_item_id,
+                    'item_code' => $item->appItem?->item_code,
+                    'item_name' => $item->appItem?->item_name,
+                    'unit_of_measure' => $item->appItem?->unit_of_measure,
+                    'item_category' => $item->appItem?->category,
+                    'detailed_specifications' => $item->appItem?->specifications,
+                    'estimated_unit_cost' => $item->estimated_unit_cost,
+                    'planned_qty' => $item->getQuarterlyQuantity($quarter),
+                    'remaining_qty' => $item->getUsableQuantity($quarter),
+                    'later_remaining' => $item->getLaterRemainingQuantity($quarter),
+                ];
+            })->values();
+
+        return Inertia::render('purchase-requests/create', [
+            'fiscalYear' => $fiscalYear,
+            'quarter' => $quarter,
+            'hasValidatedPpmp' => $ppmp !== null,
+            'ppmpId' => $ppmp?->id,
+            'canUpdatePpmp' => $ppmp !== null && Gate::allows('update', $ppmp),
+            'availableItems' => $availableItems,
+        ]);
     }
 
     public function store(StorePurchaseRequestRequest $request, PpmpQuarterlyTracker $tracker): RedirectResponse
     {
-        $budgetCheck = $request->checkBudgetAvailability();
-
-        if (! $budgetCheck['can_reserve']) {
-            return back()
-                ->withInput()
-                ->withErrors(['budget' => $budgetCheck['error']]);
-        }
+        Gate::authorize('create', PurchaseRequest::class);
 
         $user = $request->user();
-        $validated = $request->validated();
-        $totalCost = $request->calculateTotalCost();
+        $quarter = $tracker->currentQuarter();
+        $fiscalYear = $tracker->currentFiscalYear();
 
-        $purchaseRequest = DB::transaction(function () use ($validated, $user, $totalCost, $tracker): PurchaseRequest {
+        $ppmp = Ppmp::query()
+            ->where('department_id', $user->department_id)
+            ->where('fiscal_year', $fiscalYear)
+            ->where('status', PpmpStatus::Validated)
+            ->firstOrFail();
+
+        $payloadItems = $request->validated('items');
+        $estimatedTotal = 0.0;
+        $resolvedRows = [];
+
+        foreach ($payloadItems as $index => $row) {
+            $isLot = (bool) ($row['is_lot'] ?? false);
+
+            if ($isLot) {
+                $resolvedRows[$index] = [
+                    'is_lot' => true,
+                    'lot_name' => $row['lot_name'] ?? 'Lot',
+                    'quantity_requested' => 1,
+                    'estimated_unit_cost' => 0,
+                    'estimated_total_cost' => 0,
+                    'unit_of_measure' => 'lot',
+                    'parent_lot_index' => null,
+                    'ppmp_item_id' => null,
+                ];
+
+                continue;
+            }
+
+            $ppmpItem = PpmpItem::query()
+                ->with('appItem')
+                ->whereKey($row['ppmp_item_id'])
+                ->where('ppmp_id', $ppmp->id)
+                ->firstOrFail();
+
+            $qty = (int) $row['quantity_requested'];
+            $unitCost = (float) $ppmpItem->estimated_unit_cost;
+            $lineTotal = $qty * $unitCost;
+            $estimatedTotal += $lineTotal;
+
+            $resolvedRows[$index] = [
+                'is_lot' => false,
+                'ppmp_item_id' => $ppmpItem->id,
+                'ppmp_quarter' => $quarter,
+                'ppmp_planned_qty_for_quarter' => $ppmpItem->getQuarterlyQuantity($quarter),
+                'ppmp_remaining_qty_at_creation' => $ppmpItem->getUsableQuantity($quarter),
+                'item_code' => $ppmpItem->appItem?->item_code,
+                'item_name' => $ppmpItem->appItem?->item_name,
+                'detailed_specifications' => $ppmpItem->appItem?->specifications,
+                'unit_of_measure' => $ppmpItem->appItem?->unit_of_measure ?? 'pc',
+                'item_category' => $ppmpItem->appItem?->category,
+                'quantity_requested' => $qty,
+                'estimated_unit_cost' => $unitCost,
+                'estimated_total_cost' => $lineTotal,
+                'parent_lot_index' => $row['parent_lot_index'] ?? null,
+            ];
+        }
+
+        foreach ($resolvedRows as $index => $row) {
+            if (! ($row['is_lot'] ?? false)) {
+                continue;
+            }
+
+            $childTotal = 0.0;
+
+            foreach ($resolvedRows as $child) {
+                if (($child['parent_lot_index'] ?? null) === $index) {
+                    $childTotal += (float) $child['estimated_total_cost'];
+                }
+            }
+
+            $resolvedRows[$index]['estimated_unit_cost'] = $childTotal;
+            $resolvedRows[$index]['estimated_total_cost'] = $childTotal;
+            $estimatedTotal += $childTotal;
+        }
+
+        $purchaseRequest = DB::transaction(function () use ($request, $user, $ppmp, $resolvedRows, $estimatedTotal) {
             $purchaseRequest = PurchaseRequest::query()->create([
-                'pr_number' => PurchaseRequest::generateNextPrNumber(),
-                'requester_id' => $user->id,
+                ...$request->purchaseRequestAttributes(),
                 'department_id' => $user->department_id,
-                'purpose' => $validated['purpose'],
-                'justification' => $validated['justification'],
-                'estimated_total' => $totalCost,
-                'status' => PurchaseRequestStatus::SupplyOfficeReview,
+                'requester_id' => $user->id,
+                'status' => 'supply_office_review',
+                'estimated_total' => $estimatedTotal,
+                'ppmp_reference' => "PPMP-{$ppmp->fiscal_year}",
                 'submitted_at' => now(),
-                'status_updated_at' => now(),
-                'has_ppmp' => true,
             ]);
 
-            $this->createPurchaseRequestItems($purchaseRequest, $validated['items'], $tracker);
-            $this->notifySupplyOffice($purchaseRequest);
+            $createdByIndex = [];
 
-            return $purchaseRequest;
+            foreach ($resolvedRows as $index => $row) {
+                if (($row['parent_lot_index'] ?? null) !== null) {
+                    continue;
+                }
+
+                $createdByIndex[$index] = $this->createItem($purchaseRequest, $row);
+            }
+
+            foreach ($resolvedRows as $index => $row) {
+                if (($row['parent_lot_index'] ?? null) === null) {
+                    continue;
+                }
+
+                $parentIndex = (int) $row['parent_lot_index'];
+                $parent = $createdByIndex[$parentIndex] ?? null;
+
+                $this->createItem($purchaseRequest, [
+                    ...$row,
+                    'parent_lot_id' => $parent?->id,
+                ]);
+            }
+
+            return $purchaseRequest->fresh(['items']);
         });
 
-        $this->toast("Submitted {$purchaseRequest->pr_number}.");
+        $supplyOfficers = User::role('Supply Officer')->get();
+
+        if ($supplyOfficers->isNotEmpty()) {
+            Notification::send($supplyOfficers, new PurchaseRequestSubmitted($purchaseRequest));
+        }
+
+        $this->toast("Purchase request {$purchaseRequest->pr_number} submitted to Supply Office.");
 
         return redirect()->route('purchase-requests.show', $purchaseRequest);
     }
 
-    public function show(Request $request, PurchaseRequest $purchaseRequest): Response
+    public function show(PurchaseRequest $purchaseRequest): Response
     {
         Gate::authorize('view', $purchaseRequest);
 
         $purchaseRequest->load([
             'department:id,name,code',
-            'requester:id,name',
-            'items' => fn ($query) => $query->orderBy('id'),
+            'requester:id,name,email',
+            'items',
+            'activities.user:id,name',
         ]);
-
-        $canReplace = $request->user()->can('createReplacement', $purchaseRequest);
 
         return Inertia::render('purchase-requests/show', [
             'purchaseRequest' => $purchaseRequest,
-            'canReplace' => $canReplace,
+            'statusLabel' => $purchaseRequest->statusLabel(),
         ]);
     }
 
-    public function createReplacement(
-        Request $request,
-        PurchaseRequest $originalPr,
-        PpmpQuarterlyTracker $tracker,
-    ): Response {
-        $user = $this->userWhoCanCreate($request);
-
-        Gate::authorize('createReplacement', $originalPr);
-
-        $data = $this->preparePrCreationDataForReplacement($originalPr, $user, $tracker);
-
-        if ($data['ppmp'] === null) {
-            abort(403, 'Your department must have a validated PPMP before creating purchase requests.');
-        }
-
-        return Inertia::render('purchase-requests/replacement', $data);
-    }
-
-    public function storeReplacement(
-        StoreReplacementPurchaseRequestRequest $request,
-        PurchaseRequest $originalPr,
-        PpmpQuarterlyTracker $tracker,
-        PurchaseRequestActivityLogger $activityLogger,
-    ): RedirectResponse {
-        Gate::authorize('createReplacement', $originalPr);
-
-        $budgetCheck = $request->checkBudgetAvailability();
-
-        if (! $budgetCheck['can_reserve']) {
-            return back()
-                ->withInput()
-                ->withErrors(['budget' => $budgetCheck['error']]);
-        }
-
-        $user = $request->user();
-        $validated = $request->validated();
-        $totalCost = $request->calculateTotalCost();
-
-        $replacement = DB::transaction(function () use (
-            $validated,
-            $user,
-            $totalCost,
-            $tracker,
-            $originalPr,
-            $activityLogger,
-        ): PurchaseRequest {
-            $replacement = PurchaseRequest::query()->create([
-                'pr_number' => PurchaseRequest::generateNextPrNumber(),
-                'requester_id' => $user->id,
-                'department_id' => $user->department_id,
-                'purpose' => $validated['purpose'],
-                'justification' => $validated['justification'],
-                'estimated_total' => $totalCost,
-                'status' => PurchaseRequestStatus::SupplyOfficeReview,
-                'submitted_at' => now(),
-                'status_updated_at' => now(),
-                'has_ppmp' => true,
-                'replaces_pr_id' => $originalPr->id,
-            ]);
-
-            $this->createPurchaseRequestItems($replacement, $validated['items'], $tracker, $originalPr->id);
-            $this->notifySupplyOffice($replacement);
-
-            $originalPr->forceFill([
-                'replaced_by_pr_id' => $replacement->id,
-                'is_archived' => true,
-            ])->save();
-
-            $activityLogger->logReplacementCreated($originalPr, $replacement, $user->id);
-
-            return $replacement;
-        });
-
-        $this->toast("Submitted replacement {$replacement->pr_number}.");
-
-        return redirect()->route('purchase-requests.show', $replacement);
-    }
-
-    /**
-     * @return array{ppmp: Ppmp|null, ppmpCategories: list<string>, categorizedItems: array<string, list<array<string, mixed>>>, departmentBudget: array<string, mixed>, fiscalYear: int, currentQuarter: int, quarterLabel: string}
-     */
-    private function preparePrCreationData(
-        User $user,
-        PpmpQuarterlyTracker $tracker,
-        ?int $excludePurchaseRequestId = null,
-    ): array {
-        $fiscalYear = $tracker->currentFiscalYear();
-        $currentQuarter = $tracker->currentQuarter();
-
-        $ppmp = Ppmp::query()
-            ->where('department_id', $user->department_id)
-            ->where('fiscal_year', $fiscalYear)
-            ->validated()
-            ->with(['items.appItem'])
-            ->first();
-
-        $categorizedItems = [];
-        $ppmpCategories = [];
-
-        if ($ppmp !== null) {
-            $grouped = $ppmp->items
-                ->filter(fn (PpmpItem $item): bool => $item->appItem !== null)
-                ->groupBy(fn (PpmpItem $item): string => $item->appItem->category);
-
-            $ppmpCategories = $grouped->keys()->sort()->values()->all();
-
-            $categorizedItems = $grouped->map(function ($items) use ($currentQuarter, $excludePurchaseRequestId) {
-                return $items->map(fn (PpmpItem $item): array => [
-                    'id' => $item->id,
-                    'app_item_id' => $item->app_item_id,
-                    'item_code' => $item->appItem->item_code,
-                    'item_name' => $item->appItem->item_name,
-                    'unit_of_measure' => $item->appItem->unit_of_measure,
-                    'category' => $item->appItem->category,
-                    'estimated_unit_cost' => $item->estimated_unit_cost,
-                    'current_quarter_qty' => $item->getQuarterlyQuantity($currentQuarter),
-                    'remaining_qty' => $item->getRemainingQuantity($currentQuarter, $excludePurchaseRequestId),
-                    'has_current_quarter_qty' => $item->hasQuantityForQuarter($currentQuarter),
-                ])->values()->all();
-            })->all();
-        }
-
-        $budget = DepartmentBudget::getOrCreateForDepartment($user->department_id, $fiscalYear);
-
-        return [
-            'ppmp' => $ppmp,
-            'ppmpCategories' => $ppmpCategories,
-            'categorizedItems' => $categorizedItems,
-            'departmentBudget' => [
-                'allocated_budget' => (float) $budget->allocated_budget,
-                'utilized_budget' => (float) $budget->utilized_budget,
-                'reserved_budget' => (float) $budget->reserved_budget,
-                'available_budget' => $budget->getAvailableBudget(),
-            ],
-            'fiscalYear' => $fiscalYear,
-            'currentQuarter' => $currentQuarter,
-            'quarterLabel' => $tracker->quarterLabel($currentQuarter),
-        ];
-    }
-
-    /**
-     * Same creation payload as a new PR, with remaining qty that ignores the
-     * returned original and the original's purpose / lines prefilled.
-     *
-     * @return array{ppmp: Ppmp|null, ppmpCategories: list<string>, categorizedItems: array<string, list<array<string, mixed>>>, departmentBudget: array<string, mixed>, fiscalYear: int, currentQuarter: int, quarterLabel: string, originalPr: PurchaseRequest, defaults: array<string, mixed>}
-     */
-    private function preparePrCreationDataForReplacement(
-        PurchaseRequest $originalPr,
-        User $user,
-        PpmpQuarterlyTracker $tracker,
-    ): array {
-        $data = $this->preparePrCreationData($user, $tracker, $originalPr->id);
-
-        $originalPr->load(['items' => fn ($query) => $query->orderBy('id')]);
-
-        $quantities = [];
-        $lotName = '';
-
-        foreach ($originalPr->items as $item) {
-            if ($item->is_lot) {
-                $lotName = (string) ($item->lot_name ?? $item->item_name);
-
-                continue;
-            }
-
-            if ($item->ppmp_item_id !== null) {
-                $quantities[$item->ppmp_item_id] = $item->quantity_requested;
-            }
-        }
-
-        $data['originalPr'] = $originalPr;
-        $data['defaults'] = [
-            'purpose' => $originalPr->purpose,
-            'justification' => $originalPr->justification ?? '',
-            'quantities' => $quantities,
-            'lotName' => $lotName,
-        ];
-
-        return $data;
-    }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $items
-     */
-    private function createPurchaseRequestItems(
-        PurchaseRequest $purchaseRequest,
-        array $items,
-        PpmpQuarterlyTracker $tracker,
-        ?int $excludePurchaseRequestId = null,
-    ): void {
-        $currentQuarter = $tracker->currentQuarter();
-        $createdByIndex = [];
-
-        foreach ($items as $index => $itemData) {
-            $isLot = ! empty($itemData['is_lot']);
-            $quantity = $isLot ? 1 : (int) $itemData['quantity_requested'];
-            $unitCost = (float) $itemData['estimated_unit_cost'];
-
-            $prItemData = [
-                'purchase_request_id' => $purchaseRequest->id,
-                'ppmp_item_id' => $itemData['ppmp_item_id'] ?? null,
-                'item_code' => $itemData['item_code'] ?? null,
-                'item_name' => $itemData['item_name'],
-                'detailed_specifications' => $itemData['detailed_specifications'] ?? null,
-                'unit_of_measure' => $isLot ? 'lot' : $itemData['unit_of_measure'],
-                'quantity_requested' => $quantity,
-                'estimated_unit_cost' => $unitCost,
-                'estimated_total_cost' => $unitCost * $quantity,
-                'ppmp_quarter' => $currentQuarter,
-                'is_lot' => $isLot,
-                'lot_name' => $isLot ? ($itemData['lot_name'] ?? null) : null,
-                'parent_lot_id' => null,
-                'item_status' => 'pending',
-                'procurement_status' => 'pending',
-            ];
-
-            if (isset($itemData['parent_lot_index']) && $itemData['parent_lot_index'] !== '' && isset($createdByIndex[(int) $itemData['parent_lot_index']])) {
-                $prItemData['parent_lot_id'] = $createdByIndex[(int) $itemData['parent_lot_index']]->id;
-            }
-
-            if (! $isLot && ! empty($itemData['ppmp_item_id'])) {
-                $ppmpItem = PpmpItem::query()->with('appItem')->find($itemData['ppmp_item_id']);
-
-                if ($ppmpItem !== null) {
-                    $prItemData['item_category'] = $ppmpItem->appItem?->category;
-                    $prItemData['ppmp_planned_qty_for_quarter'] = $ppmpItem->getQuarterlyQuantity($currentQuarter);
-                    $prItemData['ppmp_remaining_qty_at_creation'] = $ppmpItem->getRemainingQuantity($currentQuarter, $excludePurchaseRequestId);
-                }
-            }
-
-            $createdByIndex[$index] = PurchaseRequestItem::query()->create($prItemData);
-        }
-    }
-
-    private function notifySupplyOffice(PurchaseRequest $purchaseRequest): void
+    public function export(PurchaseRequest $purchaseRequest, PurchaseRequestExportService $exportService): BinaryFileResponse|RedirectResponse
     {
-        User::role('Supply Officer')->get()->each(
-            fn (User $user) => $user->notify(new PurchaseRequestSubmitted($purchaseRequest)),
-        );
+        Gate::authorize('view', $purchaseRequest);
+
+        try {
+            return $exportService->download($purchaseRequest);
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return back()->withErrors(['export' => 'Unable to export this purchase request.']);
+        }
     }
 
-    private function userWhoCanCreate(Request $request): User
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function createItem(PurchaseRequest $purchaseRequest, array $row): PurchaseRequestItem
     {
-        $user = $request->user();
-
-        abort_unless($user->canCreatePurchaseRequests(), 403, 'System Administrators are not allowed to create purchase requests.');
-        abort_if($user->department_id === null, 403, 'You must be assigned to a department to create purchase requests.');
-
-        return $user;
+        return $purchaseRequest->items()->create([
+            'ppmp_item_id' => $row['ppmp_item_id'] ?? null,
+            'ppmp_quarter' => $row['ppmp_quarter'] ?? null,
+            'ppmp_planned_qty_for_quarter' => $row['ppmp_planned_qty_for_quarter'] ?? null,
+            'ppmp_remaining_qty_at_creation' => $row['ppmp_remaining_qty_at_creation'] ?? null,
+            'is_lot' => (bool) ($row['is_lot'] ?? false),
+            'lot_name' => $row['lot_name'] ?? null,
+            'parent_lot_id' => $row['parent_lot_id'] ?? null,
+            'item_code' => $row['item_code'] ?? null,
+            'item_name' => $row['item_name'] ?? ($row['lot_name'] ?? null),
+            'detailed_specifications' => $row['detailed_specifications'] ?? null,
+            'unit_of_measure' => $row['unit_of_measure'] ?? 'pc',
+            'quantity_requested' => $row['quantity_requested'],
+            'estimated_unit_cost' => $row['estimated_unit_cost'],
+            'estimated_total_cost' => $row['estimated_total_cost'],
+            'item_category' => $row['item_category'] ?? null,
+            'item_status' => 'pending',
+            'procurement_status' => 'pending',
+        ]);
     }
 }
