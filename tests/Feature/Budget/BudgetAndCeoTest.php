@@ -39,6 +39,7 @@ test('earmark approve moves the purchase request to ceo_approval', function () {
     $this->actingAs($this->budgetOfficer)
         ->put(route('budget.purchase-requests.update', $this->purchaseRequest), [
             'legal_basis' => 'Section 86 of RA 9184',
+            'fund_cluster_code' => '01',
             'earmark_programs_activities' => 'Instruction',
             'earmark_responsibility_center' => 'CICS',
             'earmark_date_to' => now()->addMonth()->toDateString(),
@@ -51,12 +52,29 @@ test('earmark approve moves the purchase request to ceo_approval', function () {
     $this->purchaseRequest->refresh();
 
     expect($this->purchaseRequest->status)->toBe('ceo_approval')
-        ->and($this->purchaseRequest->earmark_id)->toMatch('/^EM-\d{4}-\d{4}$/');
+        ->and($this->purchaseRequest->earmark_id)->toMatch('/^EM-\d{4}-\d{4}$/')
+        ->and($this->purchaseRequest->fund_cluster_code)->toBe('01')
+        ->and($this->purchaseRequest->funding_source)->toBe('01 - Regular Agency Fund');
 
     expect(WorkflowApproval::query()
         ->where('purchase_request_id', $this->purchaseRequest->id)
         ->where('step_name', 'ceo_initial_approval')
         ->exists())->toBeTrue();
+});
+
+test('earmark approve requires a fund cluster', function () {
+    $this->actingAs($this->budgetOfficer)
+        ->from(route('budget.purchase-requests.edit', $this->purchaseRequest))
+        ->put(route('budget.purchase-requests.update', $this->purchaseRequest), [
+            'legal_basis' => 'Section 86 of RA 9184',
+            'earmark_programs_activities' => 'Instruction',
+            'earmark_responsibility_center' => 'CICS',
+            'earmark_date_to' => now()->addMonth()->toDateString(),
+        ])
+        ->assertRedirect(route('budget.purchase-requests.edit', $this->purchaseRequest))
+        ->assertSessionHasErrors('fund_cluster_code');
+
+    expect($this->purchaseRequest->fresh()->status)->toBe('budget_office_review');
 });
 
 test('earmark reject defers the purchase request', function () {
@@ -79,6 +97,7 @@ test('earmark amend does not change workflow status', function () {
     $this->actingAs($this->budgetOfficer)
         ->patch(route('budget.purchase-requests.amend-earmark', $this->purchaseRequest), [
             'legal_basis' => 'Amended basis',
+            'fund_cluster_code' => '05',
             'earmark_programs_activities' => 'Instruction',
             'earmark_responsibility_center' => 'CICS',
             'earmark_date_to' => now()->addMonth()->toDateString(),
@@ -88,7 +107,9 @@ test('earmark amend does not change workflow status', function () {
     $this->purchaseRequest->refresh();
 
     expect($this->purchaseRequest->status)->toBe('ceo_approval')
-        ->and($this->purchaseRequest->legal_basis)->toBe('Amended basis');
+        ->and($this->purchaseRequest->legal_basis)->toBe('Amended basis')
+        ->and($this->purchaseRequest->fund_cluster_code)->toBe('05')
+        ->and($this->purchaseRequest->funding_source)->toBe('05 - Off-Budgetary Funds');
 
     expect(PurchaseRequestActivity::query()
         ->where('purchase_request_id', $this->purchaseRequest->id)

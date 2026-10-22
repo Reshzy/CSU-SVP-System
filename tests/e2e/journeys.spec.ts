@@ -33,10 +33,9 @@ test.describe.serial('Slice 9 journeys', () => {
         await page.goto('/purchase-requests/create');
         await page.locator('#pr_title').fill('E2E office supplies');
         await page.locator('#purpose').fill('For classes this quarter');
-        await fillDateInput(page.locator('#date_needed'), weekFromNow());
-        await page.getByTestId('ppmp-item-select').click();
-        await page.getByRole('option', { name: /Ballpen/ }).first().click();
-        await expect(page.getByTestId('ppmp-item-select')).toContainText('Ballpen');
+        await page.getByRole('searchbox', { name: 'Search table' }).fill('Ballpen');
+        await page.getByRole('row', { name: /Ballpen/ }).getByTestId('add-ppmp-item').click();
+        await expect(page.getByText('In request (1)')).toBeVisible();
         await page.getByRole('button', { name: 'Submit to Supply' }).click();
         await expect(page).toHaveURL(/\/purchase-requests\/\d+$/);
 
@@ -57,6 +56,8 @@ test.describe.serial('Slice 9 journeys', () => {
         await page.locator('#earmark_programs_activities').fill('Instruction');
         await page.locator('#earmark_responsibility_center').fill('CA');
         await fillDateInput(page.locator('#earmark_date_to'), weekFromNow());
+        await page.getByTestId('fund-cluster-select').click();
+        await page.getByRole('option', { name: /Regular Agency Fund/ }).click();
         await page.getByRole('button', { name: 'Approve earmark' }).click();
         await expect(page).toHaveURL(/\/budget\/purchase-requests\/?$/);
 

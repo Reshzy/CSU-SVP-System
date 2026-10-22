@@ -5,6 +5,13 @@ import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { usePrecognitiveForm } from '@/hooks/use-precognitive-form';
 import {
@@ -22,15 +29,19 @@ type PurchaseRequest = {
     status: string;
     earmark_id: string | null;
     legal_basis: string | null;
+    fund_cluster_code: string | null;
     earmark_programs_activities: string | null;
     earmark_responsibility_center: string | null;
     earmark_date_to: string | null;
     current_step_notes: string | null;
 };
 
+type FundCluster = { value: string; label: string };
+
 type Props = {
     purchaseRequest: PurchaseRequest;
     statusLabel: string;
+    fundClusters: FundCluster[];
 };
 
 function dateInputValue(value: string | null): string {
@@ -40,12 +51,14 @@ function dateInputValue(value: string | null): string {
 export default function BudgetPurchaseRequestEdit({
     purchaseRequest,
     statusLabel,
+    fundClusters,
 }: Props) {
     const form = usePrecognitiveForm(
         'put',
         update.url(purchaseRequest.id),
         {
             legal_basis: purchaseRequest.legal_basis ?? 'Section 86 of RA 9184',
+            fund_cluster_code: purchaseRequest.fund_cluster_code ?? '',
             earmark_programs_activities:
                 purchaseRequest.earmark_programs_activities ?? '',
             earmark_responsibility_center:
@@ -65,6 +78,7 @@ export default function BudgetPurchaseRequestEdit({
     function earmarkPayload() {
         return {
             legal_basis: form.data.legal_basis,
+            fund_cluster_code: form.data.fund_cluster_code,
             earmark_programs_activities: form.data.earmark_programs_activities,
             earmark_responsibility_center:
                 form.data.earmark_responsibility_center,
@@ -125,6 +139,30 @@ export default function BudgetPurchaseRequestEdit({
                             onBlur={() => form.validate('legal_basis')}
                         />
                         <InputError message={form.errors.legal_basis} />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Fund cluster</Label>
+                        <Select
+                            value={form.data.fund_cluster_code || undefined}
+                            onValueChange={(value) =>
+                                form.setData('fund_cluster_code', value)
+                            }
+                        >
+                            <SelectTrigger data-testid="fund-cluster-select">
+                                <SelectValue placeholder="Select fund cluster" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {fundClusters.map((cluster) => (
+                                    <SelectItem
+                                        key={cluster.value}
+                                        value={cluster.value}
+                                    >
+                                        {cluster.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <InputError message={form.errors.fund_cluster_code} />
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="earmark_programs_activities">

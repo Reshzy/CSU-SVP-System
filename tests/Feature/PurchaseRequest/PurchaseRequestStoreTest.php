@@ -67,8 +67,6 @@ test('storing a purchase request yields supply_office_review and a PR number', f
         'pr_title' => 'Office supplies',
         'purpose' => 'For classes',
         'justification' => 'Needed this quarter',
-        'date_needed' => now()->addWeek()->toDateString(),
-        'fund_cluster_code' => '01',
         'items' => [
             [
                 'ppmp_item_id' => $this->ppmpItem->id,
@@ -82,7 +80,10 @@ test('storing a purchase request yields supply_office_review and a PR number', f
     expect($purchaseRequest)->not->toBeNull()
         ->and($purchaseRequest->status)->toBe('supply_office_review')
         ->and($purchaseRequest->pr_number)->toMatch('/^PR-\d{4}-\d{4}$/')
-        ->and((float) $purchaseRequest->estimated_total)->toBe(100.0);
+        ->and((float) $purchaseRequest->estimated_total)->toBe(100.0)
+        ->and($purchaseRequest->date_needed)->toBeNull()
+        ->and($purchaseRequest->fund_cluster_code)->toBeNull()
+        ->and($purchaseRequest->funding_source)->toBeNull();
 
     $response->assertRedirect(route('purchase-requests.show', $purchaseRequest));
 
@@ -96,8 +97,6 @@ test('an unvalidated ppmp cannot be used to store a purchase request', function 
         ->post(route('purchase-requests.store'), [
             'pr_title' => 'Office supplies',
             'purpose' => 'For classes',
-            'date_needed' => now()->addWeek()->toDateString(),
-            'fund_cluster_code' => '01',
             'items' => [
                 [
                     'ppmp_item_id' => $this->ppmpItem->id,
@@ -116,8 +115,6 @@ test('creating a purchase request reserves department budget', function () {
     $this->actingAs($this->dean)->post(route('purchase-requests.store'), [
         'pr_title' => 'Office supplies',
         'purpose' => 'For classes',
-        'date_needed' => now()->addWeek()->toDateString(),
-        'fund_cluster_code' => '01',
         'items' => [
             [
                 'ppmp_item_id' => $this->ppmpItem->id,
@@ -161,8 +158,6 @@ test('creating a purchase request with a lot header does not require a ppmp item
     $this->actingAs($this->dean)->post(route('purchase-requests.store'), [
         'pr_title' => 'Lot request',
         'purpose' => 'Grouped supplies',
-        'date_needed' => now()->addWeek()->toDateString(),
-        'fund_cluster_code' => '01',
         'items' => [
             [
                 'is_lot' => true,
@@ -196,8 +191,6 @@ test('system admin cannot create purchase requests', function () {
         ->post(route('purchase-requests.store'), [
             'pr_title' => 'Blocked',
             'purpose' => 'Should fail',
-            'date_needed' => now()->addWeek()->toDateString(),
-            'fund_cluster_code' => '01',
             'items' => [
                 [
                     'ppmp_item_id' => $this->ppmpItem->id,

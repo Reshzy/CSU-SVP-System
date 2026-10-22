@@ -19,8 +19,6 @@ export default function ReplacementCreate({ original }: Props) {
     const form = useForm({
         pr_title: '',
         purpose: '',
-        date_needed: '',
-        fund_cluster_code: '01',
         items: [] as Array<{ ppmp_item_id: number; quantity_requested: number }>,
     });
 
@@ -55,14 +53,6 @@ export default function ReplacementCreate({ original }: Props) {
                         <Textarea
                             value={form.data.purpose}
                             onChange={(event) => form.setData('purpose', event.target.value)}
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Date needed</Label>
-                        <Input
-                            type="date"
-                            value={form.data.date_needed}
-                            onChange={(event) => form.setData('date_needed', event.target.value)}
                         />
                     </div>
                     <Button type="submit" disabled={form.processing}>

@@ -71,7 +71,7 @@ export default function PurchaseRequestShow({ purchaseRequest, statusLabel }: Pr
                         </p>
                         <p>
                             <span className="text-muted-foreground">Funding:</span>{' '}
-                            {purchaseRequest.funding_source}
+                            {purchaseRequest.funding_source ?? 'Not yet assigned'}
                         </p>
                         <p>
                             <span className="text-muted-foreground">Total:</span>{' '}

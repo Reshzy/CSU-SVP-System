@@ -41,16 +41,14 @@ export const purchaseRequestItemSchema = z
 export const purchaseRequestCreateSchema = z.object({
     pr_title: z.string().min(1, 'Title is required.').max(255),
     purpose: z.string().min(1, 'Purpose is required.'),
-    justification: z.string().optional().nullable(),
-    date_needed: z.string().min(1, 'Date needed is required.'),
-    fund_cluster_code: z.enum(['01', '05', '06', '07']),
-    fund_details: z.string().optional().nullable(),
-    budget_code: z.string().max(100).optional().nullable(),
     items: z.array(purchaseRequestItemSchema).min(1, 'Add at least one item.'),
 });
 
 export const earmarkSchema = z.object({
     legal_basis: z.string().min(1, 'Legal basis is required.'),
+    fund_cluster_code: z.enum(['01', '05', '06', '07'], {
+        error: 'Fund cluster is required.',
+    }),
     earmark_programs_activities: z
         .string()
         .min(1, 'Programs / activities is required.'),

@@ -43,6 +43,7 @@ class EarmarkController extends Controller
         return Inertia::render('budget/purchase-requests/edit', [
             'purchaseRequest' => $purchaseRequest,
             'statusLabel' => $purchaseRequest->statusLabel(),
+            'fundClusters' => PurchaseRequest::fundClusterOptions(),
         ]);
     }
 
@@ -59,7 +60,7 @@ class EarmarkController extends Controller
         $previousStatus = $purchaseRequest->status;
 
         $purchaseRequest->fill([
-            ...$validated,
+            ...$this->earmarkAttributes($validated),
             'earmark_id' => $purchaseRequest->earmark_id ?: PurchaseRequest::generateNextEarmarkId(),
             'status' => 'ceo_approval',
         ])->save();
@@ -125,7 +126,7 @@ class EarmarkController extends Controller
 
         $validated = $request->validated();
 
-        $purchaseRequest->fill($validated)->save();
+        $purchaseRequest->fill($this->earmarkAttributes($validated))->save();
 
         $activityLogger->log(
             $purchaseRequest,
@@ -153,5 +154,20 @@ class EarmarkController extends Controller
 
             return back()->withErrors(['export' => 'Unable to export earmark.']);
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>
+     */
+    private function earmarkAttributes(array $validated): array
+    {
+        $fundCluster = (string) $validated['fund_cluster_code'];
+
+        return [
+            ...$validated,
+            'fund_cluster_code' => $fundCluster,
+            'funding_source' => PurchaseRequest::formatFundingSourceFromFundCluster($fundCluster),
+        ];
     }
 }

@@ -285,15 +285,40 @@ class PurchaseRequest extends Model
         $this->save();
     }
 
+    /**
+     * @return list<array{value: string, label: string}>
+     */
+    public static function fundClusterOptions(): array
+    {
+        return [
+            ['value' => '01', 'label' => '01 - Regular Agency Fund'],
+            ['value' => '05', 'label' => '05 - Off-Budgetary Funds'],
+            ['value' => '06', 'label' => '06 - Internally Generated Income (IGE)'],
+            ['value' => '07', 'label' => '07 - Trust Receipts'],
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function fundClusterCodes(): array
+    {
+        return array_column(self::fundClusterOptions(), 'value');
+    }
+
     public static function formatFundingSourceFromFundCluster(?string $code): ?string
     {
-        return match ($code) {
-            '01' => '01 - Regular Agency Fund',
-            '05' => '05 - Off-Budgetary Funds',
-            '06' => '06 - Internally Generated Income (IGE)',
-            '07' => '07 - Trust Receipts',
-            default => $code,
-        };
+        if ($code === null || $code === '') {
+            return null;
+        }
+
+        foreach (self::fundClusterOptions() as $option) {
+            if ($option['value'] === $code) {
+                return $option['label'];
+            }
+        }
+
+        return $code;
     }
 
     public function hasBeenThroughBac(): bool

@@ -29,8 +29,8 @@ class StorePurchaseRequestRequest extends FormRequest
             'pr_title' => ['required', 'string', 'max:255'],
             'purpose' => ['required', 'string'],
             'justification' => ['nullable', 'string'],
-            'date_needed' => ['required', 'date', 'after_or_equal:today'],
-            'fund_cluster_code' => ['required', 'string', Rule::in(['01', '05', '06', '07'])],
+            'date_needed' => ['nullable', 'date', 'after_or_equal:today'],
+            'fund_cluster_code' => ['nullable', 'string', Rule::in(PurchaseRequest::fundClusterCodes())],
             'fund_details' => ['nullable', 'string'],
             'budget_code' => ['nullable', 'string', 'max:100'],
             'items' => ['required', 'array', 'min:1'],
@@ -128,15 +128,13 @@ class StorePurchaseRequestRequest extends FormRequest
      */
     public function purchaseRequestAttributes(): array
     {
-        $fundCluster = (string) $this->validated('fund_cluster_code');
-
         return [
             'pr_title' => $this->validated('pr_title'),
             'purpose' => $this->validated('purpose'),
             'justification' => $this->validated('justification'),
-            'date_needed' => $this->validated('date_needed'),
-            'fund_cluster_code' => $fundCluster,
-            'funding_source' => PurchaseRequest::formatFundingSourceFromFundCluster($fundCluster),
+            'date_needed' => null,
+            'fund_cluster_code' => null,
+            'funding_source' => null,
             'fund_details' => $this->validated('fund_details'),
             'budget_code' => $this->validated('budget_code'),
             'has_ppmp' => true,

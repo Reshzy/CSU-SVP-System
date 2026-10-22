@@ -2,8 +2,10 @@
 
 namespace App\Http\Requests\Budget;
 
+use App\Models\PurchaseRequest;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class SaveEarmarkRequest extends FormRequest
 {
@@ -19,6 +21,7 @@ class SaveEarmarkRequest extends FormRequest
     {
         return [
             'legal_basis' => ['required', 'string'],
+            'fund_cluster_code' => ['required', 'string', Rule::in(PurchaseRequest::fundClusterCodes())],
             'earmark_programs_activities' => ['required', 'string'],
             'earmark_responsibility_center' => ['required', 'string'],
             'earmark_date_to' => ['required', 'date'],

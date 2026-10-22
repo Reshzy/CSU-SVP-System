@@ -115,12 +115,6 @@ class PurchaseRequestController extends Controller
             'quarter' => $quarter,
             'hasValidatedPpmp' => $ppmp !== null,
             'availableItems' => $availableItems,
-            'fundClusters' => [
-                ['value' => '01', 'label' => '01 - Regular Agency Fund'],
-                ['value' => '05', 'label' => '05 - Off-Budgetary Funds'],
-                ['value' => '06', 'label' => '06 - Internally Generated Income (IGE)'],
-                ['value' => '07', 'label' => '07 - Trust Receipts'],
-            ],
         ]);
     }
 

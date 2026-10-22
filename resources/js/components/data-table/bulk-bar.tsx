@@ -22,6 +22,7 @@ export function DataTableBulkBar<TData>({
             {actions.map((action) => (
                 <Button
                     key={action.label}
+                    type="button"
                     size="sm"
                     variant={action.variant === 'destructive' ? 'destructive' : 'outline'}
                     onClick={() => action.onAction(selected)}
@@ -29,7 +30,7 @@ export function DataTableBulkBar<TData>({
                     {action.label}
                 </Button>
             ))}
-            <Button size="sm" variant="ghost" onClick={onClear}>
+            <Button type="button" size="sm" variant="ghost" onClick={onClear}>
                 Clear
             </Button>
         </div>
