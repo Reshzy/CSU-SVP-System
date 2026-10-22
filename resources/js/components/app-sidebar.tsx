@@ -64,11 +64,11 @@ const mainNavItems: NavItem[] = [
         href: ppmpIndex(),
         icon: ClipboardList,
     },
-    {
-        title: 'UI Kit',
-        href: uiKit(),
-        icon: Palette,
-    },
+    // {
+    //     title: 'UI Kit',
+    //     href: uiKit(),
+    //     icon: Palette,
+    // },
 ];
 
 const supplyNavItems: NavItem[] = [
