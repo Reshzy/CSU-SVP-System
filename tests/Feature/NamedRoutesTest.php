@@ -38,6 +38,7 @@ test('file 14 named routes exist or are documented as rebuild mappings', functio
     'ppmp.update',
     'ppmp.validate',
     'ppmp.summary',
+    'ppmp.items.realign',
     'api.budget.check',
     'api.budget.validate',
     'supply.purchase-requests.index',

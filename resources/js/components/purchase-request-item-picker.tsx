@@ -1,4 +1,14 @@
-import { createContext, useContext, useMemo, useState } from 'react';
+import { Form, Link } from '@inertiajs/react';
+import {
+    createContext,
+    useContext,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    type PointerEvent as ReactPointerEvent,
+} from 'react';
+import { toast } from 'sonner';
 import {
     createDataTableColumnHelper,
     DataTable,
@@ -8,6 +18,10 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Spinner } from '@/components/ui/spinner';
+import { cn } from '@/lib/utils';
+import { index as ppmpIndex, summary as ppmpSummary } from '@/routes/ppmp';
+import { realign } from '@/routes/ppmp/items';
 
 export type AvailablePpmpItem = {
     id: number;
@@ -17,6 +31,7 @@ export type AvailablePpmpItem = {
     item_category: string | null;
     estimated_unit_cost: string;
     remaining_qty: number;
+    later_remaining: number;
 };
 
 export type PurchaseRequestCartLine = {
@@ -52,9 +67,24 @@ type Props = {
     onLinesChange: (lines: PurchaseRequestCartLine[]) => void;
     onLotsChange: (lots: PurchaseRequestCartLot[]) => void;
     errors: Record<string, string>;
+    ppmpId?: number | null;
+    canUpdatePpmp?: boolean;
 };
 
 const CatalogContext = createContext<CatalogContextValue | null>(null);
+
+type PaintDrag = {
+    pointerId: number;
+    startId: number;
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    mode: 'select' | 'deselect';
+    painting: boolean;
+    visited: Set<number>;
+    captureTarget: HTMLElement | null;
+};
 
 const columnHelper = createDataTableColumnHelper<AvailablePpmpItem>();
 
@@ -218,9 +248,157 @@ export function PurchaseRequestItemPicker({
     onLinesChange,
     onLotsChange,
     errors,
+    ppmpId = null,
+    canUpdatePpmp = false,
 }: Props) {
     const [addQuantities, setAddQuantities] = useState<Record<number, string>>({});
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
+    const [isSelecting, setIsSelecting] = useState(false);
+    const standaloneListRef = useRef<HTMLDivElement>(null);
+    const paintRef = useRef<PaintDrag | null>(null);
+    const suppressClickRef = useRef(false);
+    const paintedIdsRef = useRef<Set<number>>(new Set());
+    const standaloneIdsRef = useRef<Set<number>>(new Set());
+
+    standaloneIdsRef.current = new Set(
+        lines
+            .filter((line) => line.lot_id === null)
+            .map((line) => line.ppmp_item_id),
+    );
+
+    useEffect(() => {
+        function lineIdFromPoint(x: number, y: number): number | null {
+            const element = document.elementFromPoint(x, y);
+            const row = element?.closest('[data-cart-line-id]');
+
+            if (!(row instanceof HTMLElement)) {
+                return null;
+            }
+
+            const id = Number(row.dataset.cartLineId);
+
+            return Number.isFinite(id) ? id : null;
+        }
+
+        function applyPaint(id: number, mode: 'select' | 'deselect'): void {
+            const drag = paintRef.current;
+
+            if (drag === null || !standaloneIdsRef.current.has(id) || drag.visited.has(id)) {
+                return;
+            }
+
+            drag.visited.add(id);
+            paintedIdsRef.current.add(id);
+            setSelectedIds((current) => {
+                if (mode === 'select') {
+                    return current.includes(id) ? current : [...current, id];
+                }
+
+                return current.includes(id)
+                    ? current.filter((existing) => existing !== id)
+                    : current;
+            });
+        }
+
+        function idsAlong(x0: number, y0: number, x1: number, y1: number): number[] {
+            const distance = Math.hypot(x1 - x0, y1 - y0);
+            const steps = Math.max(1, Math.ceil(distance / 8));
+            const ids: number[] = [];
+
+            for (let step = 1; step <= steps; step += 1) {
+                const t = step / steps;
+                const id = lineIdFromPoint(
+                    x0 + (x1 - x0) * t,
+                    y0 + (y1 - y0) * t,
+                );
+
+                if (id !== null) {
+                    ids.push(id);
+                }
+            }
+
+            return ids;
+        }
+
+        function onPointerMove(event: PointerEvent): void {
+            const drag = paintRef.current;
+
+            if (drag === null || event.pointerId !== drag.pointerId) {
+                return;
+            }
+
+            const distance = Math.hypot(
+                event.clientX - drag.startX,
+                event.clientY - drag.startY,
+            );
+
+            if (!drag.painting && distance < 4) {
+                return;
+            }
+
+            if (!drag.painting) {
+                drag.painting = true;
+                applyPaint(drag.startId, drag.mode);
+
+                try {
+                    drag.captureTarget?.setPointerCapture(event.pointerId);
+                } catch {
+                    // Capture can fail once the pointer is no longer active.
+                }
+            }
+
+            for (const id of idsAlong(
+                drag.lastX,
+                drag.lastY,
+                event.clientX,
+                event.clientY,
+            )) {
+                applyPaint(id, drag.mode);
+            }
+
+            drag.lastX = event.clientX;
+            drag.lastY = event.clientY;
+        }
+
+        function finishPaint(event: PointerEvent): void {
+            const drag = paintRef.current;
+
+            if (drag === null || event.pointerId !== drag.pointerId) {
+                return;
+            }
+
+            if (drag.painting) {
+                suppressClickRef.current = true;
+            }
+
+            try {
+                if (drag.captureTarget?.hasPointerCapture(event.pointerId)) {
+                    drag.captureTarget.releasePointerCapture(event.pointerId);
+                }
+            } catch {
+                // The list may have unmounted during the drag.
+            }
+
+            paintRef.current = null;
+            document.body.style.userSelect = '';
+            setIsSelecting(false);
+            window.setTimeout(() => {
+                paintedIdsRef.current.clear();
+            }, 0);
+        }
+
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', finishPaint);
+        window.addEventListener('pointercancel', finishPaint);
+
+        return () => {
+            window.removeEventListener('pointermove', onPointerMove);
+            window.removeEventListener('pointerup', finishPaint);
+            window.removeEventListener('pointercancel', finishPaint);
+            document.body.style.userSelect = '';
+            paintRef.current = null;
+        };
+    }, []);
 
     const itemsById = useMemo(() => {
         return new Map(availableItems.map((item) => [item.id, item]));
@@ -229,6 +407,74 @@ export function PurchaseRequestItemPicker({
     const catalogItems = useMemo(
         () => availableItems.filter((item) => item.remaining_qty > 0),
         [availableItems],
+    );
+
+    const laterItems = useMemo(
+        () =>
+            availableItems.filter(
+                (item) => item.remaining_qty === 0 && item.later_remaining > 0,
+            ),
+        [availableItems],
+    );
+
+    const laterColumns = useMemo(
+        () => [
+            columnHelper.accessor('item_name', {
+                header: 'Item',
+                fill: true,
+                cell: ({ row }) => (
+                    <>
+                        <span className="font-medium">
+                            {row.original.item_name ?? 'Untitled item'}
+                        </span>
+                        <span className="text-muted-foreground block font-mono text-xs">
+                            {row.original.item_code} ·{' '}
+                            {row.original.item_category}
+                        </span>
+                    </>
+                ),
+            }),
+            columnHelper.accessor('later_remaining', {
+                header: 'Later qty',
+                cell: ({ getValue }) => (
+                    <span className="tabular-nums">{getValue()}</span>
+                ),
+            }),
+            columnHelper.display({
+                id: 'realign',
+                header: '',
+                enableSorting: false,
+                cell: ({ row }) => {
+                    if (ppmpId === null || !canUpdatePpmp) {
+                        return (
+                            <span className="text-muted-foreground text-xs">
+                                Planned for later this year
+                            </span>
+                        );
+                    }
+
+                    return (
+                        <Form
+                            {...realign.form([ppmpId, row.original.id])}
+                            disableWhileProcessing
+                        >
+                            {({ processing }) => (
+                                <Button
+                                    type="submit"
+                                    size="sm"
+                                    variant="outline"
+                                    data-test="realign-ppmp-item"
+                                >
+                                    {processing ? <Spinner /> : null}
+                                    Bring into this quarter
+                                </Button>
+                            )}
+                        </Form>
+                    );
+                },
+            }),
+        ],
+        [canUpdatePpmp, ppmpId],
     );
 
     const categories = useMemo(
@@ -334,6 +580,10 @@ export function PurchaseRequestItemPicker({
     }
 
     function toggleSelected(ppmpItemId: number, checked: boolean): void {
+        if (paintedIdsRef.current.has(ppmpItemId)) {
+            return;
+        }
+
         setSelectedIds((current) => {
             if (checked) {
                 return current.includes(ppmpItemId)
@@ -345,16 +595,54 @@ export function PurchaseRequestItemPicker({
         });
     }
 
+    function activateLine(ppmpItemId: number, selected: boolean): void {
+        if (suppressClickRef.current) {
+            suppressClickRef.current = false;
+
+            return;
+        }
+
+        toggleSelected(ppmpItemId, !selected);
+    }
+
+    function beginPaint(
+        ppmpItemId: number,
+        selected: boolean,
+        event: ReactPointerEvent<HTMLDivElement>,
+    ): void {
+        if (event.pointerType !== 'mouse' || event.button !== 0) {
+            return;
+        }
+
+        suppressClickRef.current = false;
+        paintRef.current = {
+            pointerId: event.pointerId,
+            startId: ppmpItemId,
+            startX: event.clientX,
+            startY: event.clientY,
+            lastX: event.clientX,
+            lastY: event.clientY,
+            mode: selected ? 'deselect' : 'select',
+            painting: false,
+            visited: new Set(),
+            captureTarget: standaloneListRef.current,
+        };
+        document.body.style.userSelect = 'none';
+        setIsSelecting(true);
+    }
+
     const selectedStandalone = lines.filter(
         (line) => line.lot_id === null && selectedIds.includes(line.ppmp_item_id),
     );
 
     function groupAsLot(): void {
         if (selectedStandalone.length < 2) {
+            toast('Select at least 2 items in this request first');
+
             return;
         }
 
-        const lotId = crypto.randomUUID();
+        const lotId = nextLotId();
         const selected = new Set(
             selectedStandalone.map((line) => line.ppmp_item_id),
         );
@@ -406,7 +694,7 @@ export function PurchaseRequestItemPicker({
         <CatalogContext.Provider value={catalog}>
             <div className="space-y-6">
                 <div className="space-y-3">
-                    <h2 className="text-base font-medium">PPMP items this quarter</h2>
+                    <h2 className="text-base font-medium">Available PPMP items</h2>
                     <DataTable
                         tableId="pr-create-catalog"
                         mode="client"
@@ -432,22 +720,84 @@ export function PurchaseRequestItemPicker({
                         ]}
                         getRowId={(row) => String(row.id)}
                         initialPinning={{ start: ['item_name'] }}
-                        emptyMessage="No PPMP items have remaining quantity this quarter."
+                        emptyMessage="No PPMP items have remaining quantity you can request now, including unused earlier quarters."
                         noResultsMessage="No items match the current filters."
                     />
                 </div>
 
+                {laterItems.length > 0 ? (
+                    <div className="space-y-3">
+                        <div className="space-y-1">
+                            <h2 className="text-base font-medium">
+                                Planned for later this year
+                            </h2>
+                            <p className="text-muted-foreground text-sm">
+                                These items have quantity only in later
+                                quarters.{' '}
+                                {ppmpId !== null ? (
+                                    <Link
+                                        href={ppmpSummary(ppmpId)}
+                                        className="underline"
+                                    >
+                                        Open the PPMP
+                                    </Link>
+                                ) : (
+                                    <Link
+                                        href={ppmpIndex.url()}
+                                        className="underline"
+                                    >
+                                        Open the PPMP
+                                    </Link>
+                                )}{' '}
+                                to realign them, or bring them into this
+                                quarter here.
+                            </p>
+                        </div>
+                        <DataTable
+                            tableId="pr-create-later"
+                            mode="client"
+                            data={laterItems}
+                            columns={laterColumns}
+                            searchPlaceholder="Item name or code"
+                            getRowId={(row) => String(row.id)}
+                            initialPinning={{ start: ['item_name'] }}
+                            emptyMessage="No later-quarter items."
+                            noResultsMessage="No items match the current filters."
+                        />
+                    </div>
+                ) : null}
+
                 <div className="space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                        <h2 className="text-base font-medium">This request</h2>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            disabled={selectedStandalone.length < 2}
-                            onClick={groupAsLot}
+                        <div className="space-y-1">
+                            <h2 className="text-base font-medium">This request</h2>
+                            <p className="text-muted-foreground text-sm">
+                                Select 2 or more items, then group them as a lot.
+                            </p>
+                        </div>
+                        <span
+                            className={cn(
+                                'inline-flex',
+                                selectedStandalone.length < 2 && 'cursor-not-allowed',
+                            )}
+                            onClick={() => {
+                                if (selectedStandalone.length < 2) {
+                                    groupAsLot();
+                                }
+                            }}
                         >
-                            Group as lot
-                        </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                disabled={selectedStandalone.length < 2}
+                                onClick={groupAsLot}
+                                data-testid="group-as-lot"
+                            >
+                                {selectedStandalone.length > 0
+                                    ? `Group as lot (${selectedStandalone.length})`
+                                    : 'Group as lot'}
+                            </Button>
+                        </span>
                     </div>
 
                     {lines.length === 0 ? (
@@ -512,18 +862,49 @@ export function PurchaseRequestItemPicker({
                                 );
                             })}
 
-                            {standaloneLines.map((line) => (
-                                <CartLineRow
-                                    key={line.ppmp_item_id}
-                                    line={line}
-                                    item={itemsById.get(line.ppmp_item_id)}
-                                    selectable
-                                    selected={selectedIds.includes(line.ppmp_item_id)}
-                                    onToggleSelected={toggleSelected}
-                                    onQuantityChange={setLineQuantity}
-                                    onRemove={removeLine}
-                                />
-                            ))}
+                            {standaloneLines.length > 0 ? (
+                                <div
+                                    ref={standaloneListRef}
+                                    className={cn(
+                                        'space-y-3',
+                                        isSelecting && 'select-none',
+                                    )}
+                                >
+                                    {standaloneLines.map((line) => (
+                                        <CartLineRow
+                                            key={line.ppmp_item_id}
+                                            line={line}
+                                            item={itemsById.get(
+                                                line.ppmp_item_id,
+                                            )}
+                                            selectable
+                                            selected={selectedIds.includes(
+                                                line.ppmp_item_id,
+                                            )}
+                                            onToggleSelected={toggleSelected}
+                                            onActivate={() =>
+                                                activateLine(
+                                                    line.ppmp_item_id,
+                                                    selectedIds.includes(
+                                                        line.ppmp_item_id,
+                                                    ),
+                                                )
+                                            }
+                                            onPointerDown={(event) =>
+                                                beginPaint(
+                                                    line.ppmp_item_id,
+                                                    selectedIds.includes(
+                                                        line.ppmp_item_id,
+                                                    ),
+                                                    event,
+                                                )
+                                            }
+                                            onQuantityChange={setLineQuantity}
+                                            onRemove={removeLine}
+                                        />
+                                    ))}
+                                </div>
+                            ) : null}
                         </div>
                     )}
 
@@ -542,6 +923,8 @@ function CartLineRow({
     selectable,
     selected,
     onToggleSelected,
+    onActivate,
+    onPointerDown,
     onQuantityChange,
     onRemove,
 }: {
@@ -550,6 +933,8 @@ function CartLineRow({
     selectable: boolean;
     selected: boolean;
     onToggleSelected: (ppmpItemId: number, checked: boolean) => void;
+    onActivate?: () => void;
+    onPointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void;
     onQuantityChange: (ppmpItemId: number, raw: string) => void;
     onRemove: (ppmpItemId: number) => void;
 }) {
@@ -558,13 +943,55 @@ function CartLineRow({
     const lineTotal = line.quantity_requested * unitCost;
 
     return (
-        <div className="grid items-end gap-3 rounded-lg border p-3 md:grid-cols-[auto_1fr_8rem_8rem_auto]">
+        <div
+            data-cart-line-id={selectable ? line.ppmp_item_id : undefined}
+            onClick={
+                selectable
+                    ? (event) => {
+                          const target = event.target;
+
+                          if (
+                              !(target instanceof Element) ||
+                              target.closest(
+                                  '[data-cart-line-ignore], [data-slot="checkbox"]',
+                              )
+                          ) {
+                              return;
+                          }
+
+                          onActivate?.();
+                      }
+                    : undefined
+            }
+            onPointerDown={
+                selectable
+                    ? (event) => {
+                          const target = event.target;
+
+                          if (
+                              !(target instanceof Element) ||
+                              target.closest('[data-cart-line-ignore]')
+                          ) {
+                              return;
+                          }
+
+                          onPointerDown?.(event);
+                      }
+                    : undefined
+            }
+            className={cn(
+                'grid items-end gap-3 rounded-lg border p-3 md:grid-cols-[auto_1fr_8rem_8rem_auto]',
+                selectable && 'cursor-pointer',
+                selected && 'bg-accent ring-2 ring-ring',
+            )}
+        >
             {selectable ? (
                 <Checkbox
                     checked={selected}
                     onCheckedChange={(checked) =>
                         onToggleSelected(line.ppmp_item_id, checked === true)
                     }
+                    onClick={(event) => event.stopPropagation()}
                     aria-label={`Select ${item?.item_name ?? 'item'}`}
                 />
             ) : (
@@ -576,7 +1003,7 @@ function CartLineRow({
                     {item?.item_code} · rem {remaining}
                 </p>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1" data-cart-line-ignore="">
                 <Label htmlFor={`cart-qty-${line.ppmp_item_id}`}>Qty</Label>
                 <Input
                     id={`cart-qty-${line.ppmp_item_id}`}
@@ -594,12 +1021,24 @@ function CartLineRow({
             <Button
                 type="button"
                 variant="ghost"
-                onClick={() => onRemove(line.ppmp_item_id)}
+                data-cart-line-ignore=""
+                onClick={(event) => {
+                    event.stopPropagation();
+                    onRemove(line.ppmp_item_id);
+                }}
             >
                 Remove
             </Button>
         </div>
     );
+}
+
+function nextLotId(): string {
+    try {
+        return crypto.randomUUID?.() ?? `lot-${Date.now()}`;
+    } catch {
+        return `lot-${Date.now()}`;
+    }
 }
 
 function parseQuantity(raw: string): number {

@@ -65,6 +65,7 @@ export type PpmpSummaryItem = {
     estimated_total_cost: string;
     remaining_quantity: number;
     remaining_this_quarter: number;
+    later_remaining: number;
 };
 
 export type ConsolidatedAppItem = {

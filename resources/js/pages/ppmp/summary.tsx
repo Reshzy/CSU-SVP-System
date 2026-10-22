@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import { edit, index, validate } from '@/routes/ppmp';
+import { realign } from '@/routes/ppmp/items';
 import type { Ppmp, PpmpSummaryItem } from '@/types';
 
 type Props = {
@@ -120,8 +121,37 @@ export default function PpmpSummary({ ppmp, items, currentQuarter }: Props) {
                 header: 'Estimated cost',
                 cell: ({ getValue }) => <NumericCell value={getValue()} />,
             }),
+            columnHelper.display({
+                id: 'realign',
+                header: '',
+                enableSorting: false,
+                cell: ({ row }) => {
+                    if (row.original.later_remaining <= 0) {
+                        return null;
+                    }
+
+                    return (
+                        <Form
+                            {...realign.form([ppmp.id, row.original.id])}
+                            disableWhileProcessing
+                        >
+                            {({ processing }) => (
+                                <Button
+                                    type="submit"
+                                    size="sm"
+                                    variant="outline"
+                                    data-test="realign-ppmp-item"
+                                >
+                                    {processing ? <Spinner /> : null}
+                                    Bring later quarters here
+                                </Button>
+                            )}
+                        </Form>
+                    );
+                },
+            }),
         ],
-        [currentQuarter],
+        [currentQuarter, ppmp.id],
     );
 
     return (
@@ -173,6 +203,12 @@ export default function PpmpSummary({ ppmp, items, currentQuarter }: Props) {
                         )}
                     </div>
                 </div>
+
+                <p className="text-muted-foreground text-sm">
+                    Left in Q{currentQuarter} includes unused quantity from
+                    earlier quarters. Quantity planned only for later quarters
+                    must be brought here before it can be requested.
+                </p>
 
                 <DataTable
                     tableId="ppmp-summary"

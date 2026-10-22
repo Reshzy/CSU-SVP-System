@@ -103,20 +103,21 @@ class StorePurchaseRequestRequest extends FormRequest
                     continue;
                 }
 
-                $planned = $ppmpItem->getQuarterlyQuantity($quarter);
+                $remaining = $ppmpItem->getUsableQuantity($quarter);
 
-                if ($planned <= 0) {
-                    $validator->errors()->add("items.{$index}.quantity_requested", 'No PPMP allocation exists for the current quarter.');
+                if ($remaining <= 0) {
+                    $validator->errors()->add(
+                        "items.{$index}.quantity_requested",
+                        'No remaining PPMP quantity is available this quarter (including unused earlier quarters). Realign later-quarter quantities on the PPMP to request this item now.',
+                    );
 
                     continue;
                 }
 
-                $remaining = $ppmpItem->getRemainingQuantity($quarter);
-
                 if ($quantity > $remaining) {
                     $validator->errors()->add(
                         "items.{$index}.quantity_requested",
-                        "Requested quantity exceeds remaining PPMP quantity ({$remaining}) for the current quarter.",
+                        "Requested quantity exceeds remaining PPMP quantity ({$remaining}) available this quarter.",
                     );
                 }
             }

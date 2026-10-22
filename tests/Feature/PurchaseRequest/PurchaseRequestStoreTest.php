@@ -200,3 +200,151 @@ test('system admin cannot create purchase requests', function () {
         ])
         ->assertForbidden();
 });
+
+test('creating a purchase request offers unused earlier-quarter quantity', function () {
+    $this->travelTo(now()->setDate((int) now()->year, 5, 15));
+
+    $this->ppmpItem->update([
+        'q1_quantity' => 10,
+        'q2_quantity' => 0,
+        'q3_quantity' => 4,
+        'q4_quantity' => 0,
+        'total_quantity' => 14,
+    ]);
+
+    $this->actingAs($this->dean)
+        ->get(route('purchase-requests.create'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('purchase-requests/create')
+            ->where('availableItems.0.remaining_qty', 10)
+            ->where('availableItems.0.later_remaining', 4)
+            ->where('canUpdatePpmp', true)
+        );
+});
+
+test('unused quantity from an earlier quarter can be requested now', function () {
+    Notification::fake();
+    $this->travelTo(now()->setDate((int) now()->year, 5, 15));
+
+    $this->ppmpItem->update([
+        'q1_quantity' => 10,
+        'q2_quantity' => 0,
+        'q3_quantity' => 0,
+        'q4_quantity' => 0,
+        'total_quantity' => 10,
+        'estimated_total_cost' => 250.00,
+    ]);
+
+    $this->actingAs($this->dean)
+        ->post(route('purchase-requests.store'), [
+            'pr_title' => 'Office supplies',
+            'purpose' => 'For classes',
+            'items' => [
+                [
+                    'ppmp_item_id' => $this->ppmpItem->id,
+                    'quantity_requested' => 4,
+                ],
+            ],
+        ])
+        ->assertRedirect();
+
+    $line = PurchaseRequest::query()->first()?->items()->first();
+
+    expect($line)->not->toBeNull()
+        ->and($line->ppmp_quarter)->toBe(2)
+        ->and($line->ppmp_remaining_qty_at_creation)->toBe(10);
+});
+
+test('quantity planned only for a later quarter cannot be requested', function () {
+    $this->travelTo(now()->setDate((int) now()->year, 5, 15));
+
+    $this->ppmpItem->update([
+        'q1_quantity' => 0,
+        'q2_quantity' => 0,
+        'q3_quantity' => 10,
+        'q4_quantity' => 0,
+        'total_quantity' => 10,
+    ]);
+
+    $this->actingAs($this->dean)
+        ->post(route('purchase-requests.store'), [
+            'pr_title' => 'Office supplies',
+            'purpose' => 'For classes',
+            'items' => [
+                [
+                    'ppmp_item_id' => $this->ppmpItem->id,
+                    'quantity_requested' => 1,
+                ],
+            ],
+        ])
+        ->assertSessionHasErrors([
+            'items.0.quantity_requested' => 'No remaining PPMP quantity is available this quarter (including unused earlier quarters). Realign later-quarter quantities on the PPMP to request this item now.',
+        ]);
+
+    expect(PurchaseRequest::query()->count())->toBe(0);
+});
+
+test('later-quarter quantity can be requested after it is realigned', function () {
+    Notification::fake();
+    $this->travelTo(now()->setDate((int) now()->year, 5, 15));
+
+    $this->ppmpItem->update([
+        'q1_quantity' => 0,
+        'q2_quantity' => 0,
+        'q3_quantity' => 10,
+        'q4_quantity' => 0,
+        'total_quantity' => 10,
+        'estimated_total_cost' => 250.00,
+    ]);
+
+    $this->actingAs($this->dean)
+        ->post(route('ppmp.items.realign', ['ppmp' => $this->ppmp, 'item' => $this->ppmpItem]))
+        ->assertRedirect();
+
+    $this->actingAs($this->dean)
+        ->post(route('purchase-requests.store'), [
+            'pr_title' => 'Office supplies',
+            'purpose' => 'For classes',
+            'items' => [
+                [
+                    'ppmp_item_id' => $this->ppmpItem->id,
+                    'quantity_requested' => 4,
+                ],
+            ],
+        ])
+        ->assertRedirect();
+
+    expect(PurchaseRequest::query()->count())->toBe(1)
+        ->and($this->ppmpItem->fresh()->q2_quantity)->toBe(10)
+        ->and($this->ppmpItem->fresh()->q3_quantity)->toBe(0);
+});
+
+test('requested quantity cannot exceed usable leftover this quarter', function () {
+    $this->travelTo(now()->setDate((int) now()->year, 5, 15));
+
+    $this->ppmpItem->update([
+        'q1_quantity' => 5,
+        'q2_quantity' => 0,
+        'q3_quantity' => 0,
+        'q4_quantity' => 0,
+        'total_quantity' => 5,
+    ]);
+
+    $this->actingAs($this->dean)
+        ->post(route('purchase-requests.store'), [
+            'pr_title' => 'Office supplies',
+            'purpose' => 'For classes',
+            'items' => [
+                [
+                    'ppmp_item_id' => $this->ppmpItem->id,
+                    'quantity_requested' => 6,
+                ],
+            ],
+        ])
+        ->assertSessionHasErrors([
+            'items.0.quantity_requested' => 'Requested quantity exceeds remaining PPMP quantity (5) available this quarter.',
+        ]);
+
+    expect(PurchaseRequest::query()->count())->toBe(0);
+});

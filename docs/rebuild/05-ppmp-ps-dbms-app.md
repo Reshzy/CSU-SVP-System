@@ -59,7 +59,7 @@ PR items store `ppmp_item_id`, `ppmp_quarter`, and snapshots `ppmp_planned_qty_f
 
 ## Remaining quantity (must preserve)
 
-`PpmpItem::getRemainingQuantity(?$quarter, ?$excludePurchaseRequestId)`:
+`PpmpItem::getRemainingQuantity(?$quarter, ?$excludePurchaseRequestId)` — isolated to one quarter column (or the annual total when `$quarter` is omitted):
 
 ```
 planned − SUM(quantity_requested on linked PR items
@@ -69,15 +69,23 @@ planned − SUM(quantity_requested on linked PR items
 
 Optional filter: `ppmp_quarter = $quarter`. Optional exclude one PR id (edit/replacement).
 
+`PpmpItem::getUsableQuantity($throughQuarter, ?$excludePurchaseRequestId)` — what may be requested **now**:
+
+```
+sum(planned Q1..throughQuarter) − SUM(live PR items with ppmp_quarter in 1..throughQuarter)
+```
+
+Unused leftover from earlier quarters is included. Later-quarter columns are not. Isolated remaining is unchanged: a Q2 request that eats Q1 leftover stamps `ppmp_quarter = 2` and can floor isolated Q2 remaining at 0 while usable still accounts for the overflow.
+
 **Returned PRs still consume qty unless archived.** Replacement path archives the original so qty is freed. Failed-item `re_pr_created` originals stay in the sum until those PRs are rejected/cancelled/archived — failed-item re-PR relies on the new PR using remaining math after failed items are excluded from “active” consumption where `getRemainingQuantity` already excludes rejected/cancelled only. Rebuild: re-read `PpmpItem` and replacement controllers if tests fail.
 
-Items with **zero remaining** or **no allocation for current quarter** cannot be requested. Current quarter from `PpmpQuarterlyTracker` (also sets `pr_quarter` on create).
+Items with **zero usable quantity** cannot be requested. Quantity sitting only in later quarters stays locked until `POST ppmp.items.realign` moves those columns onto the current quarter **in place** (same `ppmp_items.id`, `total_quantity` unchanged). Do not realign by deleting and recreating lines. Current quarter from `PpmpQuarterlyTracker` (also sets `pr_quarter` on create).
 
 **Validation on PR store:**
 
 - PPMP `validated`
-- Item has qty for **current quarter**
-- Requested qty ≤ remaining for that quarter
+- Requested qty ≤ **usable** quantity through the current quarter
+- Later-quarter-only lines fail until they are realigned
 
 ---
 
@@ -102,6 +110,6 @@ Legacy `ppmp:import` writes a pre-`ppmp_id` shape — **do not use** for rebuild
 - [ ] PPMP import cannot create lines for codes missing from `app_items` that year.
 - [ ] Unvalidated PPMP: PR create fails validation.
 - [ ] Remaining qty excludes archived, rejected, and cancelled PRs only (returned still counts until archived).
-- [ ] Current-quarter allocation is required for each requested PPMP item.
+- [ ] Usable quantity through the current quarter is required for each requested PPMP item (unused earlier leftover counts; later-quarter qty does not until realigned).
 - [ ] Consolidated APP is read-only and permission-gated.
 - [ ] One PPMP row per department per fiscal year.

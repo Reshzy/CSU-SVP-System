@@ -165,6 +165,9 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
         Route::get('{ppmp}/edit', [PpmpController::class, 'edit'])->name('edit');
         Route::put('{ppmp}', [PpmpController::class, 'update'])->name('update');
         Route::post('{ppmp}/validate', [PpmpController::class, 'validate'])->name('validate');
+        Route::post('{ppmp}/items/{item}/realign', [PpmpController::class, 'realign'])
+            ->scopeBindings()
+            ->name('items.realign');
         Route::get('{ppmp}/summary', [PpmpController::class, 'summary'])->name('summary');
     });
 

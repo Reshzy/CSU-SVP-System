@@ -171,10 +171,14 @@ test('an empty plan cannot be validated', function () {
 
 test('a plan belonging to another department is out of reach', function () {
     $otherPpmp = Ppmp::factory()->create();
+    $otherItem = PpmpItem::factory()->for($otherPpmp)->create();
 
     $this->actingAs($this->dean)->get(route('ppmp.summary', $otherPpmp))->assertForbidden();
     $this->actingAs($this->dean)->get(route('ppmp.edit', $otherPpmp))->assertForbidden();
     $this->actingAs($this->dean)->post(route('ppmp.validate', $otherPpmp))->assertForbidden();
+    $this->actingAs($this->dean)
+        ->post(route('ppmp.items.realign', ['ppmp' => $otherPpmp, 'item' => $otherItem]))
+        ->assertForbidden();
 });
 
 test('the executive officer can reach any departments plan', function () {
@@ -243,9 +247,85 @@ test('the summary reports remaining quantity per line', function () {
         ->assertInertia(fn ($page) => $page
             ->component('ppmp/summary')
             ->where('items.0.remaining_quantity', 10)
+            ->where('items.0.remaining_this_quarter', 10)
+            ->where('items.0.later_remaining', 0)
         );
+});
+
+test('realigning a line moves later-quarter quantity onto the current quarter in place', function () {
+    $this->travelTo(now()->setDate((int) now()->year, 5, 15));
+
+    $ppmp = Ppmp::factory()->for($this->department)->validated()->create();
+    $item = PpmpItem::factory()->for($ppmp)->create([
+        'app_item_id' => $this->ballpen->id,
+        'q1_quantity' => 0,
+        'q2_quantity' => 5,
+        'q3_quantity' => 8,
+        'q4_quantity' => 2,
+        'total_quantity' => 15,
+        'estimated_unit_cost' => 10.00,
+        'estimated_total_cost' => 150.00,
+    ]);
+    $itemId = $item->id;
+
+    $this->actingAs($this->dean)
+        ->post(route('ppmp.items.realign', ['ppmp' => $ppmp, 'item' => $item]))
+        ->assertRedirect();
+
+    $item->refresh();
+
+    expect($item->id)->toBe($itemId)
+        ->and($item->q1_quantity)->toBe(0)
+        ->and($item->q2_quantity)->toBe(15)
+        ->and($item->q3_quantity)->toBe(0)
+        ->and($item->q4_quantity)->toBe(0)
+        ->and($item->total_quantity)->toBe(15)
+        ->and((float) $item->estimated_total_cost)->toBe(150.00)
+        ->and($ppmp->fresh()->status)->toBe(PpmpStatus::Validated);
+});
+
+test('realigning does nothing when the line has no later-quarter quantity', function () {
+    $this->travelTo(now()->setDate((int) now()->year, 5, 15));
+
+    $ppmp = Ppmp::factory()->for($this->department)->create();
+    $item = PpmpItem::factory()->for($ppmp)->create([
+        'app_item_id' => $this->ballpen->id,
+        'q1_quantity' => 4,
+        'q2_quantity' => 6,
+        'q3_quantity' => 0,
+        'q4_quantity' => 0,
+        'total_quantity' => 10,
+    ]);
+
+    $this->actingAs($this->dean)
+        ->post(route('ppmp.items.realign', ['ppmp' => $ppmp, 'item' => $item]))
+        ->assertRedirect();
+
+    $item->refresh();
+
+    expect($item->q1_quantity)->toBe(4)
+        ->and($item->q2_quantity)->toBe(6)
+        ->and($item->q3_quantity)->toBe(0)
+        ->and($item->q4_quantity)->toBe(0);
+});
+
+test('a line from another plan cannot be realigned onto this one', function () {
+    $ppmp = Ppmp::factory()->for($this->department)->create();
+    $foreign = PpmpItem::factory()->create();
+
+    $this->actingAs($this->dean)
+        ->post(route('ppmp.items.realign', ['ppmp' => $ppmp, 'item' => $foreign]))
+        ->assertNotFound();
 });
 
 test('guests are sent to the login screen', function () {
     $this->get(route('ppmp.index'))->assertRedirect(route('login'));
+});
+
+test('guests cannot realign a plan line', function () {
+    $ppmp = Ppmp::factory()->for($this->department)->create();
+    $item = PpmpItem::factory()->for($ppmp)->create();
+
+    $this->post(route('ppmp.items.realign', ['ppmp' => $ppmp, 'item' => $item]))
+        ->assertRedirect(route('login'));
 });

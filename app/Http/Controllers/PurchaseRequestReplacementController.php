@@ -70,7 +70,7 @@ class PurchaseRequestReplacementController extends Controller
                 'ppmp_item_id' => $ppmpItem->id,
                 'ppmp_quarter' => $quarter,
                 'ppmp_planned_qty_for_quarter' => $ppmpItem->getQuarterlyQuantity($quarter),
-                'ppmp_remaining_qty_at_creation' => $ppmpItem->getRemainingQuantity($quarter),
+                'ppmp_remaining_qty_at_creation' => $ppmpItem->getUsableQuantity($quarter),
                 'item_code' => $ppmpItem->appItem?->item_code,
                 'item_name' => $ppmpItem->appItem?->item_name,
                 'detailed_specifications' => $ppmpItem->appItem?->specifications,

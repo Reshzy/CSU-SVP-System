@@ -106,7 +106,8 @@ class PurchaseRequestController extends Controller
                     'detailed_specifications' => $item->appItem?->specifications,
                     'estimated_unit_cost' => $item->estimated_unit_cost,
                     'planned_qty' => $item->getQuarterlyQuantity($quarter),
-                    'remaining_qty' => $item->getRemainingQuantity($quarter),
+                    'remaining_qty' => $item->getUsableQuantity($quarter),
+                    'later_remaining' => $item->getLaterRemainingQuantity($quarter),
                 ];
             })->values();
 
@@ -114,6 +115,8 @@ class PurchaseRequestController extends Controller
             'fiscalYear' => $fiscalYear,
             'quarter' => $quarter,
             'hasValidatedPpmp' => $ppmp !== null,
+            'ppmpId' => $ppmp?->id,
+            'canUpdatePpmp' => $ppmp !== null && Gate::allows('update', $ppmp),
             'availableItems' => $availableItems,
         ]);
     }
@@ -170,7 +173,7 @@ class PurchaseRequestController extends Controller
                 'ppmp_item_id' => $ppmpItem->id,
                 'ppmp_quarter' => $quarter,
                 'ppmp_planned_qty_for_quarter' => $ppmpItem->getQuarterlyQuantity($quarter),
-                'ppmp_remaining_qty_at_creation' => $ppmpItem->getRemainingQuantity($quarter),
+                'ppmp_remaining_qty_at_creation' => $ppmpItem->getUsableQuantity($quarter),
                 'item_code' => $ppmpItem->appItem?->item_code,
                 'item_name' => $ppmpItem->appItem?->item_name,
                 'detailed_specifications' => $ppmpItem->appItem?->specifications,

@@ -39,7 +39,7 @@ There is **no** `routes/api.php`. JSON budget endpoints live under the **web** `
 | `purchase-requests.index/create/store/show` | resource, only those four | no edit/update/destroy |
 | `purchase-requests.export` | GET `.../export` | own PR |
 | `purchase-requests.replacement.create/store` | `.../{originalPr}/replacement` | |
-| `ppmp.*` | `/ppmp` index, import, create, store, edit, update, validate, summary | |
+| `ppmp.*` | `/ppmp` index, import, create, store, edit, update, validate, summary, items.realign | |
 | `api.budget.check` | GET `/api/budget/check` | |
 | `api.budget.validate` | POST `/api/budget/validate` | |
 

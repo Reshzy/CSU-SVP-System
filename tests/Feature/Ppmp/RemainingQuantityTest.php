@@ -130,3 +130,51 @@ test('quantity on a different plan line does not bleed across', function () {
     expect($this->item->getRemainingQuantity(1))->toBe(10)
         ->and($other->getRemainingQuantity(1))->toBe(4);
 });
+
+test('usable quantity includes unused leftover from earlier quarters', function () {
+    expect($this->item->getUsableQuantity(1))->toBe(10)
+        ->and($this->item->getUsableQuantity(2))->toBe(20)
+        ->and($this->item->getUsableQuantity(4))->toBe(40);
+});
+
+test('later-quarter planned quantity is not usable yet', function () {
+    expect($this->item->getUsableQuantity(2))->toBe(20)
+        ->and($this->item->getLaterRemainingQuantity(2))->toBe(20);
+});
+
+test('a live request in an earlier quarter still consumes usable quantity later', function () {
+    PurchaseRequestItem::factory()->for(($this->request)())->for($this->item, 'ppmpItem')->create([
+        'ppmp_quarter' => 1,
+        'quantity_requested' => 4,
+    ]);
+
+    expect($this->item->getUsableQuantity(2))->toBe(16);
+});
+
+test('a current-quarter request can consume leftover from earlier quarters', function () {
+    PurchaseRequestItem::factory()->for(($this->request)())->for($this->item, 'ppmpItem')->create([
+        'ppmp_quarter' => 1,
+        'quantity_requested' => 4,
+    ]);
+
+    PurchaseRequestItem::factory()->for(($this->request)())->for($this->item, 'ppmpItem')->create([
+        'ppmp_quarter' => 2,
+        'quantity_requested' => 12,
+    ]);
+
+    expect($this->item->getRemainingQuantity(1))->toBe(6)
+        ->and($this->item->getRemainingQuantity(2))->toBe(0)
+        ->and($this->item->getUsableQuantity(2))->toBe(4);
+});
+
+test('one request can be excluded from usable quantity so an edit does not count against itself', function () {
+    $own = ($this->request)();
+
+    PurchaseRequestItem::factory()->for($own)->for($this->item, 'ppmpItem')->create([
+        'ppmp_quarter' => 1,
+        'quantity_requested' => 4,
+    ]);
+
+    expect($this->item->getUsableQuantity(1))->toBe(6)
+        ->and($this->item->getUsableQuantity(1, $own->id))->toBe(10);
+});

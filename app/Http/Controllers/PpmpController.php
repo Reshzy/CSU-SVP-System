@@ -7,6 +7,7 @@ use App\Http\Requests\Ppmp\ImportPpmpRequest;
 use App\Http\Requests\Ppmp\StorePpmpRequest;
 use App\Models\AppItem;
 use App\Models\Ppmp;
+use App\Models\PpmpItem;
 use App\Models\User;
 use App\Services\PpmpImporter;
 use App\Services\PpmpQuarterlyTracker;
@@ -117,6 +118,31 @@ class PpmpController extends Controller
         return redirect()->route('ppmp.summary', $ppmp);
     }
 
+    /**
+     * Move later-quarter planned quantity onto the current quarter without
+     * rewriting the rest of the plan.
+     */
+    public function realign(Ppmp $ppmp, PpmpItem $item, PpmpQuarterlyTracker $tracker): RedirectResponse
+    {
+        Gate::authorize('update', $ppmp);
+
+        $quarter = $tracker->currentQuarter();
+        $moved = $item->realignLaterQuartersTo($quarter);
+
+        if ($moved === 0) {
+            $this->toast('There is no later-quarter quantity to bring into this quarter.', 'info');
+
+            return back();
+        }
+
+        $item->loadMissing('appItem:id,item_name');
+        $name = $item->appItem?->item_name ?? 'that item';
+
+        $this->toast("Moved {$moved} units of {$name} into Q{$quarter}.");
+
+        return back();
+    }
+
     public function summary(Ppmp $ppmp, PpmpQuarterlyTracker $tracker): Response
     {
         Gate::authorize('view', $ppmp);
@@ -141,7 +167,8 @@ class PpmpController extends Controller
                     'estimated_unit_cost' => $item->estimated_unit_cost,
                     'estimated_total_cost' => $item->estimated_total_cost,
                     'remaining_quantity' => $item->getRemainingQuantity(),
-                    'remaining_this_quarter' => $item->getRemainingQuantity($currentQuarter),
+                    'remaining_this_quarter' => $item->getUsableQuantity($currentQuarter),
+                    'later_remaining' => $item->getLaterRemainingQuantity($currentQuarter),
                 ]),
         ]);
     }

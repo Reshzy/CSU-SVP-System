@@ -25,6 +25,8 @@ type Props = {
     fiscalYear: number;
     quarter: number;
     hasValidatedPpmp: boolean;
+    ppmpId: number | null;
+    canUpdatePpmp: boolean;
     availableItems: AvailablePpmpItem[];
 };
 
@@ -32,6 +34,8 @@ export default function PurchaseRequestCreate({
     fiscalYear,
     quarter,
     hasValidatedPpmp,
+    ppmpId,
+    canUpdatePpmp,
     availableItems,
 }: Props) {
     const form = usePrecognitiveForm('post', store.url(), {
@@ -146,6 +150,8 @@ export default function PurchaseRequestCreate({
                             onLinesChange={setLines}
                             onLotsChange={setLots}
                             errors={form.errors}
+                            ppmpId={ppmpId}
+                            canUpdatePpmp={canUpdatePpmp}
                         />
 
                         <div className="flex items-center justify-between gap-4">
