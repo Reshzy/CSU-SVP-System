@@ -5,7 +5,7 @@
     "scripts": {
         "build": "vp build",
         "build:ssr": "vp build && vp build --ssr",
-        "dev": "vp dev",
+        "dev": "node .cursor/debug-vp-launch.mjs",
         "check": "vp check",
         "check:fix": "vp check --fix",
         "types:check": "tsc --noEmit",
