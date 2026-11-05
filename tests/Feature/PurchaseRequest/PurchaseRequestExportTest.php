@@ -8,7 +8,7 @@ use Database\Seeders\RolePermissionSeeder;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
-test('exports stock numbers units and descriptions without lot items or template samples', function () {
+test('exports each lot item on its own row without unit or cost', function () {
     $this->seed(RolePermissionSeeder::class);
 
     $department = Department::factory()->create();
@@ -18,6 +18,16 @@ test('exports stock numbers units and descriptions without lot items or template
         'requester_id' => $user->id,
         'purpose' => 'For the laboratory',
         'created_at' => '2026-11-05 09:00:00',
+    ]);
+
+    PurchaseRequestItem::factory()->create([
+        'purchase_request_id' => $purchaseRequest->id,
+        'ppmp_item_id' => null,
+        'item_name' => 'Bond paper, A4, 70gsm',
+        'unit_of_measure' => 'ream',
+        'quantity_requested' => 3,
+        'estimated_unit_cost' => 250,
+        'estimated_total_cost' => 750,
     ]);
 
     $lot = PurchaseRequestItem::factory()->create([
@@ -39,19 +49,33 @@ test('exports stock numbers units and descriptions without lot items or template
         'is_lot' => false,
         'item_name' => 'Desktop computer, Core i5',
         'unit_of_measure' => 'unit',
-        'quantity_requested' => 1,
-        'estimated_unit_cost' => 50000,
-        'estimated_total_cost' => 50000,
+        'quantity_requested' => 2,
+        'estimated_unit_cost' => 30000,
+        'estimated_total_cost' => 60000,
     ]);
 
     PurchaseRequestItem::factory()->create([
         'purchase_request_id' => $purchaseRequest->id,
         'ppmp_item_id' => null,
-        'item_name' => 'Bond paper, A4, 70gsm',
-        'unit_of_measure' => 'ream',
-        'quantity_requested' => 3,
-        'estimated_unit_cost' => 250,
-        'estimated_total_cost' => 750,
+        'parent_lot_id' => $lot->id,
+        'is_lot' => false,
+        'item_name' => 'Monitor, 24 inch',
+        'unit_of_measure' => 'pc',
+        'quantity_requested' => 2,
+        'estimated_unit_cost' => 10000,
+        'estimated_total_cost' => 20000,
+    ]);
+
+    PurchaseRequestItem::factory()->create([
+        'purchase_request_id' => $purchaseRequest->id,
+        'ppmp_item_id' => null,
+        'parent_lot_id' => $lot->id,
+        'is_lot' => false,
+        'item_name' => 'Keyboard',
+        'unit_of_measure' => 'pc',
+        'quantity_requested' => 2,
+        'estimated_unit_cost' => 10000,
+        'estimated_total_cost' => 20000,
     ]);
 
     $response = $this->actingAs($user)->get(route('purchase-requests.export', $purchaseRequest));
@@ -67,21 +91,44 @@ test('exports stock numbers units and descriptions without lot items or template
     expect($sheet->getCell('D7')->getValue())->toBe($purchaseRequest->pr_number)
         ->and($sheet->getCell('F7')->getValue())->toBe('Date: 2026-11-05')
         ->and($sheet->getCell('A11')->getValue())->toBe(1)
-        ->and($sheet->getCell('B11')->getValue())->toBe('lot')
-        ->and($sheet->getCell('C11')->getValue())->toBe('Computer lot')
-        ->and($sheet->getCell('E11')->getValue())->toBe(1)
-        ->and((float) $sheet->getCell('F11')->getValue())->toBe(50000.0)
+        ->and($sheet->getCell('B11')->getValue())->toBe('ream')
+        ->and($sheet->getCell('C11')->getValue())->toBe('Bond paper, A4, 70gsm')
+        ->and($sheet->getCell('E11')->getValue())->toBe(3)
+        ->and((float) $sheet->getCell('F11')->getValue())->toBe(250.0)
         ->and($sheet->getCell('G11')->isFormula())->toBeTrue()
         ->and($sheet->getCell('G11')->getValue())->toBe('=F11*E11')
+        ->and($sheet->getStyle('C11')->getFont()->getBold())->toBeFalse()
         ->and($sheet->getCell('A12')->getValue())->toBe(2)
-        ->and($sheet->getCell('B12')->getValue())->toBe('ream')
-        ->and($sheet->getCell('C12')->getValue())->toBe('Bond paper, A4, 70gsm')
-        ->and($sheet->getCell('E12')->getValue())->toBe(3)
-        ->and((float) $sheet->getCell('F12')->getValue())->toBe(250.0)
+        ->and($sheet->getCell('B12')->getValue())->toBe('lot')
+        ->and($sheet->getCell('C12')->getValue())->toBe('Computer lot')
+        ->and($sheet->getCell('E12')->getValue())->toBe(1)
+        ->and((float) $sheet->getCell('F12')->getValue())->toBe(50000.0)
         ->and($sheet->getCell('G12')->getValue())->toBe('=F12*E12')
-        ->and($sheet->getCell('C13')->getValue())->toBeNull()
+        ->and($sheet->getStyle('C12')->getFont()->getBold())->toBeTrue()
+        ->and($sheet->getCell('A13')->getValue())->toBeNull()
+        ->and($sheet->getCell('B13')->getValue())->toBeNull()
+        ->and($sheet->getCell('C13')->getValue())->toBe('  Desktop computer, Core i5')
+        ->and($sheet->getCell('E13')->getValue())->toBeNull()
+        ->and($sheet->getCell('F13')->getValue())->toBeNull()
+        ->and($sheet->getCell('G13')->getValue())->toBeNull()
+        ->and($sheet->getStyle('C13')->getFont()->getBold())->toBeFalse()
+        ->and($sheet->getCell('A14')->getValue())->toBeNull()
+        ->and($sheet->getCell('B14')->getValue())->toBeNull()
+        ->and($sheet->getCell('C14')->getValue())->toBe('  Monitor, 24 inch')
+        ->and($sheet->getCell('E14')->getValue())->toBeNull()
+        ->and($sheet->getCell('F14')->getValue())->toBeNull()
+        ->and($sheet->getCell('G14')->getValue())->toBeNull()
+        ->and($sheet->getCell('A15')->getValue())->toBeNull()
+        ->and($sheet->getCell('B15')->getValue())->toBeNull()
+        ->and($sheet->getCell('C15')->getValue())->toBe('  Keyboard')
+        ->and($sheet->getCell('E15')->getValue())->toBeNull()
+        ->and($sheet->getCell('F15')->getValue())->toBeNull()
+        ->and($sheet->getCell('G15')->getValue())->toBeNull()
+        ->and($sheet->getStyle('C15')->getFont()->getBold())->toBeFalse()
+        ->and($sheet->getCell('C16')->getValue())->toBeNull()
         ->and($sheet->getCell('C56')->getValue())->toBeNull()
-        ->and($sheet->getStyle('C11')->getAlignment()->getWrapText())->toBeTrue();
+        ->and($sheet->getStyle('C11')->getAlignment()->getWrapText())->toBeTrue()
+        ->and($sheet->getStyle('C12')->getAlignment()->getWrapText())->toBeTrue();
 
     $values = [];
 
@@ -98,6 +145,5 @@ test('exports stock numbers units and descriptions without lot items or template
     $printed = implode("\n", $values);
 
     expect($printed)->not->toContain('ALCOHOL')
-        ->and($printed)->not->toContain('BATTERY')
-        ->and($printed)->not->toContain('Desktop computer, Core i5');
+        ->and($printed)->not->toContain('BATTERY');
 });

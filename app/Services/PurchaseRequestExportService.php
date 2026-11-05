@@ -16,6 +16,8 @@ class PurchaseRequestExportService
 
     private const int LAST_ITEM_ROW = 55;
 
+    private const string LOT_CHILD_INDENT = '  ';
+
     public function download(PurchaseRequest $purchaseRequest): BinaryFileResponse
     {
         $template = storage_path('app/templates/PurchaseRequestTemplate.xlsx');
@@ -49,7 +51,7 @@ class PurchaseRequestExportService
 
             $this->fillHeader($sheet, $purchaseRequest, $ceoName);
             $this->fillItems($sheet, $chunk->values(), $stockNumber);
-            $stockNumber += $chunk->count();
+            $stockNumber += $chunk->where('priced', true)->count();
         }
 
         $directory = storage_path('app/temp');
@@ -77,26 +79,35 @@ class PurchaseRequestExportService
     }
 
     /**
-     * @param  Collection<int, PurchaseRequestItem>  $items
+     * @param  Collection<int, array{item: PurchaseRequestItem, priced: bool}>  $rows
      */
-    private function fillItems(Worksheet $sheet, Collection $items, int $startingNumber): void
+    private function fillItems(Worksheet $sheet, Collection $rows, int $startingNumber): void
     {
         $this->clearItemRows($sheet);
 
-        $row = self::FIRST_ITEM_ROW;
+        $rowNumber = self::FIRST_ITEM_ROW;
         $stockNumber = $startingNumber;
 
-        foreach ($items as $item) {
-            $sheet->setCellValue("A{$row}", $stockNumber);
-            $sheet->setCellValue("B{$row}", $this->unit($item));
-            $sheet->setCellValue("C{$row}", $this->description($item));
-            $sheet->getStyle("C{$row}")->getAlignment()->setWrapText(true);
-            $sheet->setCellValue("E{$row}", $item->quantity_requested);
-            $sheet->setCellValue("F{$row}", $item->estimated_unit_cost);
-            $sheet->setCellValue("G{$row}", "=F{$row}*E{$row}");
+        foreach ($rows as $row) {
+            $item = $row['item'];
+            $sheet->getStyle("C{$rowNumber}")->getAlignment()->setWrapText(true);
 
-            $stockNumber++;
-            $row++;
+            if ($row['priced']) {
+                $sheet->setCellValue("A{$rowNumber}", $stockNumber);
+                $sheet->setCellValue("B{$rowNumber}", $this->unit($item));
+                $sheet->setCellValue("C{$rowNumber}", $this->description($item));
+                $sheet->setCellValue("E{$rowNumber}", $item->quantity_requested);
+                $sheet->setCellValue("F{$rowNumber}", $item->estimated_unit_cost);
+                $sheet->setCellValue("G{$rowNumber}", "=F{$rowNumber}*E{$rowNumber}");
+                $stockNumber++;
+            } else {
+                $sheet->setCellValue("C{$rowNumber}", $this->childDescription($item));
+                $sheet->setCellValue("G{$rowNumber}", null);
+            }
+
+            $sheet->getStyle("C{$rowNumber}")->getFont()->setBold($item->is_lot);
+
+            $rowNumber++;
         }
     }
 
@@ -108,6 +119,7 @@ class PurchaseRequestExportService
             }
 
             $sheet->setCellValue("G{$row}", "=F{$row}*E{$row}");
+            $sheet->getStyle("C{$row}")->getFont()->setBold(false);
         }
     }
 
@@ -129,17 +141,46 @@ class PurchaseRequestExportService
         return $item->item_name ?? '';
     }
 
+    private function childDescription(PurchaseRequestItem $item): string
+    {
+        return self::LOT_CHILD_INDENT.($item->item_name ?? '');
+    }
+
     /**
-     * Top-level lines only. A lot is one row; its children stay in the database
-     * and are omitted from the printed form.
+     * Top-level lines, with each lot followed by one row per child. A child
+     * prints its name only. The lot row already carries the group's quantity,
+     * unit, and cost.
      *
-     * @return Collection<int, PurchaseRequestItem>
+     * @return Collection<int, array{item: PurchaseRequestItem, priced: bool}>
      */
     private function orderedItems(PurchaseRequest $purchaseRequest): Collection
     {
+        $childrenByLot = $purchaseRequest->items
+            ->whereNotNull('parent_lot_id')
+            ->groupBy('parent_lot_id');
+
         return $purchaseRequest->items
             ->whereNull('parent_lot_id')
             ->sortBy('id')
+            ->flatMap(function (PurchaseRequestItem $item) use ($childrenByLot): Collection {
+                $rows = collect([
+                    ['item' => $item, 'priced' => true],
+                ]);
+
+                if (! $item->is_lot) {
+                    return $rows;
+                }
+
+                $children = $childrenByLot
+                    ->get($item->id, collect())
+                    ->sortBy('id')
+                    ->map(fn (PurchaseRequestItem $child): array => [
+                        'item' => $child,
+                        'priced' => false,
+                    ]);
+
+                return $rows->concat($children);
+            })
             ->values();
     }
 }
