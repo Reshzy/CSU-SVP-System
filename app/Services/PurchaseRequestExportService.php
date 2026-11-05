@@ -7,6 +7,7 @@ use App\Models\PurchaseRequestItem;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Style\Font;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
@@ -16,7 +17,11 @@ class PurchaseRequestExportService
 
     private const int LAST_ITEM_ROW = 55;
 
+    private const float DESCRIPTION_WIDTH_MARGIN = 1.0;
+
     private const string LOT_CHILD_INDENT = '  ';
+
+    public function __construct(private PurchaseRequestDescriptionLines $descriptionLines) {}
 
     public function download(PurchaseRequest $purchaseRequest): BinaryFileResponse
     {
@@ -30,28 +35,41 @@ class PurchaseRequestExportService
 
         $spreadsheet = IOFactory::load($template);
         $templateSheet = $spreadsheet->getActiveSheet();
-        $lines = $this->orderedItems($purchaseRequest);
-        $chunks = $lines->chunk(self::LAST_ITEM_ROW - self::FIRST_ITEM_ROW + 1)->values();
+        [$regularFont, $boldFont] = $this->descriptionFonts($templateSheet);
+        $pages = $this->paginate(
+            $this->orderedItems($purchaseRequest),
+            $regularFont,
+            $boldFont,
+            $this->descriptionWidth($templateSheet),
+        );
 
-        if ($chunks->isEmpty()) {
-            $chunks = collect([collect()]);
+        $sheets = [$templateSheet];
+
+        foreach ($pages as $pageIndex => $page) {
+            if ($pageIndex === 0) {
+                continue;
+            }
+
+            $sheet = clone $templateSheet;
+            $sheet->setTitle('Page '.($pageIndex + 1));
+            $spreadsheet->addSheet($sheet, $pageIndex);
+            $sheets[] = $sheet;
+        }
+
+        if (count($pages) > 1) {
+            $templateSheet->setTitle('Page 1');
         }
 
         $ceoName = User::role('Executive Officer')->value('name');
         $stockNumber = 1;
 
-        foreach ($chunks as $pageIndex => $chunk) {
-            if ($pageIndex === 0) {
-                $sheet = $templateSheet;
-            } else {
-                $sheet = clone $templateSheet;
-                $sheet->setTitle('Page '.($pageIndex + 1));
-                $spreadsheet->addSheet($sheet, $pageIndex);
-            }
-
+        foreach ($sheets as $pageIndex => $sheet) {
             $this->fillHeader($sheet, $purchaseRequest, $ceoName);
-            $this->fillItems($sheet, $chunk->values(), $stockNumber);
-            $stockNumber += $chunk->where('priced', true)->count();
+            $this->fillItems($sheet, $pages[$pageIndex], $stockNumber);
+            $stockNumber += count(array_filter(
+                $pages[$pageIndex],
+                fn (array $line): bool => $line['showAmounts'],
+            ));
         }
 
         $directory = storage_path('app/temp');
@@ -79,9 +97,9 @@ class PurchaseRequestExportService
     }
 
     /**
-     * @param  Collection<int, array{item: PurchaseRequestItem, priced: bool}>  $rows
+     * @param  list<array{item: PurchaseRequestItem, text: string, showAmounts: bool, bold: bool}>  $rows
      */
-    private function fillItems(Worksheet $sheet, Collection $rows, int $startingNumber): void
+    private function fillItems(Worksheet $sheet, array $rows, int $startingNumber): void
     {
         $this->clearItemRows($sheet);
 
@@ -89,23 +107,21 @@ class PurchaseRequestExportService
         $stockNumber = $startingNumber;
 
         foreach ($rows as $row) {
-            $item = $row['item'];
             $sheet->getStyle("C{$rowNumber}")->getAlignment()->setWrapText(true);
+            $sheet->setCellValue("C{$rowNumber}", $row['text']);
+            $sheet->getStyle("C{$rowNumber}")->getFont()->setBold($row['bold']);
 
-            if ($row['priced']) {
+            if ($row['showAmounts']) {
+                $item = $row['item'];
                 $sheet->setCellValue("A{$rowNumber}", $stockNumber);
                 $sheet->setCellValue("B{$rowNumber}", $this->unit($item));
-                $sheet->setCellValue("C{$rowNumber}", $this->description($item));
                 $sheet->setCellValue("E{$rowNumber}", $item->quantity_requested);
                 $sheet->setCellValue("F{$rowNumber}", $item->estimated_unit_cost);
                 $sheet->setCellValue("G{$rowNumber}", "=F{$rowNumber}*E{$rowNumber}");
                 $stockNumber++;
             } else {
-                $sheet->setCellValue("C{$rowNumber}", $this->childDescription($item));
                 $sheet->setCellValue("G{$rowNumber}", null);
             }
-
-            $sheet->getStyle("C{$rowNumber}")->getFont()->setBold($item->is_lot);
 
             $rowNumber++;
         }
@@ -121,6 +137,123 @@ class PurchaseRequestExportService
             $sheet->setCellValue("G{$row}", "=F{$row}*E{$row}");
             $sheet->getStyle("C{$row}")->getFont()->setBold(false);
         }
+    }
+
+    /**
+     * @param  Collection<int, array{item: PurchaseRequestItem, priced: bool}>  $lines
+     * @return list<list<array{item: PurchaseRequestItem, text: string, showAmounts: bool, bold: bool}>>
+     */
+    private function paginate(Collection $lines, Font $regularFont, Font $boldFont, float $maxColumnWidth): array
+    {
+        $capacity = self::LAST_ITEM_ROW - self::FIRST_ITEM_ROW + 1;
+        $pages = [];
+        $page = [];
+        $used = 0;
+
+        foreach ($lines as $line) {
+            $item = $line['item'];
+            $bold = $line['priced'] && $item->is_lot;
+            $wrapped = $this->descriptionLines->lines(
+                $line['priced'] ? $this->description($item) : ($item->item_name ?? ''),
+                $bold ? $boldFont : $regularFont,
+                $maxColumnWidth,
+                $line['priced'] ? '' : self::LOT_CHILD_INDENT,
+            );
+            $count = count($wrapped);
+            $remaining = $capacity - $used;
+
+            if ($count <= $remaining) {
+                $this->appendLines($page, $item, $wrapped, $line['priced'], $bold);
+                $used += $count;
+
+                continue;
+            }
+
+            if ($count <= $capacity) {
+                if ($page !== []) {
+                    $pages[] = $page;
+                }
+
+                $page = [];
+                $used = 0;
+                $this->appendLines($page, $item, $wrapped, $line['priced'], $bold);
+                $used += $count;
+
+                continue;
+            }
+
+            $offset = 0;
+            $firstSegment = true;
+
+            while ($offset < $count) {
+                if ($used === $capacity) {
+                    $pages[] = $page;
+                    $page = [];
+                    $used = 0;
+                }
+
+                $take = min($capacity - $used, $count - $offset);
+                $this->appendLines(
+                    $page,
+                    $item,
+                    array_slice($wrapped, $offset, $take),
+                    $firstSegment && $line['priced'],
+                    $bold,
+                );
+                $offset += $take;
+                $used += $take;
+                $firstSegment = false;
+            }
+        }
+
+        if ($page !== [] || $pages === []) {
+            $pages[] = $page;
+        }
+
+        return $pages;
+    }
+
+    /**
+     * @param  list<array{item: PurchaseRequestItem, text: string, showAmounts: bool, bold: bool}>  $page
+     * @param  list<string>  $lines
+     */
+    private function appendLines(array &$page, PurchaseRequestItem $item, array $lines, bool $showAmounts, bool $bold): void
+    {
+        foreach ($lines as $index => $text) {
+            $page[] = [
+                'item' => $item,
+                'text' => $text,
+                'showAmounts' => $showAmounts && $index === 0,
+                'bold' => $bold,
+            ];
+        }
+    }
+
+    /**
+     * @return array{0: Font, 1: Font}
+     */
+    private function descriptionFonts(Worksheet $sheet): array
+    {
+        $source = $sheet->getStyle('C11')->getFont();
+        $regular = new Font;
+        $regular->setName($source->getName() ?? 'Arial');
+        $regular->setSize($source->getSize() ?? 11);
+        $regular->setBold(false);
+
+        $bold = new Font;
+        $bold->setName($source->getName() ?? 'Arial');
+        $bold->setSize($source->getSize() ?? 11);
+        $bold->setBold(true);
+
+        return [$regular, $bold];
+    }
+
+    private function descriptionWidth(Worksheet $sheet): float
+    {
+        $width = $sheet->getColumnDimension('C')->getWidth()
+            + $sheet->getColumnDimension('D')->getWidth();
+
+        return max(1, $width - self::DESCRIPTION_WIDTH_MARGIN);
     }
 
     private function unit(PurchaseRequestItem $item): string
@@ -139,11 +272,6 @@ class PurchaseRequestExportService
         }
 
         return $item->item_name ?? '';
-    }
-
-    private function childDescription(PurchaseRequestItem $item): string
-    {
-        return self::LOT_CHILD_INDENT.($item->item_name ?? '');
     }
 
     /**
