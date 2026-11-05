@@ -39,6 +39,18 @@ class StorePurchaseRequestRequest extends FormRequest
             'items.*.is_lot' => ['sometimes', 'boolean'],
             'items.*.lot_name' => ['required_if:items.*.is_lot,true', 'nullable', 'string', 'max:255'],
             'items.*.parent_lot_index' => ['nullable', 'integer', 'min:0'],
+            'items.*.item_name' => ['exclude_if:items.*.is_lot,true', 'nullable', 'string'],
+            'items.*.estimated_unit_cost' => ['exclude_if:items.*.is_lot,true', 'nullable', 'numeric', 'min:0'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'items.*.estimated_unit_cost.min' => 'Unit cost cannot be negative.',
         ];
     }
 

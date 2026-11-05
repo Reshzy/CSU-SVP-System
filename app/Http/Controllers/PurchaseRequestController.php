@@ -164,9 +164,16 @@ class PurchaseRequestController extends Controller
                 ->firstOrFail();
 
             $qty = (int) $row['quantity_requested'];
-            $unitCost = (float) $ppmpItem->estimated_unit_cost;
-            $lineTotal = $qty * $unitCost;
-            $estimatedTotal += $lineTotal;
+            $submittedName = trim((string) ($row['item_name'] ?? ''));
+            $submittedCost = $row['estimated_unit_cost'] ?? null;
+            $unitCost = $submittedCost === null || $submittedCost === ''
+                ? (float) $ppmpItem->estimated_unit_cost
+                : (float) $submittedCost;
+            $lineTotal = round($qty * $unitCost, 2);
+
+            if (($row['parent_lot_index'] ?? null) === null) {
+                $estimatedTotal += $lineTotal;
+            }
 
             $resolvedRows[$index] = [
                 'is_lot' => false,
@@ -175,7 +182,7 @@ class PurchaseRequestController extends Controller
                 'ppmp_planned_qty_for_quarter' => $ppmpItem->getQuarterlyQuantity($quarter),
                 'ppmp_remaining_qty_at_creation' => $ppmpItem->getUsableQuantity($quarter),
                 'item_code' => $ppmpItem->appItem?->item_code,
-                'item_name' => $ppmpItem->appItem?->item_name,
+                'item_name' => $submittedName !== '' ? $submittedName : $ppmpItem->appItem?->item_name,
                 'detailed_specifications' => $ppmpItem->appItem?->specifications,
                 'unit_of_measure' => $ppmpItem->appItem?->unit_of_measure ?? 'pc',
                 'item_category' => $ppmpItem->appItem?->category,

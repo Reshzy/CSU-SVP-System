@@ -180,7 +180,8 @@ test('creating a purchase request with a lot header does not require a ppmp item
 
     expect($purchaseRequest)->not->toBeNull()
         ->and($purchaseRequest->items()->where('is_lot', true)->count())->toBe(1)
-        ->and($purchaseRequest->items()->whereNotNull('parent_lot_id')->count())->toBe(2);
+        ->and($purchaseRequest->items()->whereNotNull('parent_lot_id')->count())->toBe(2)
+        ->and((float) $purchaseRequest->estimated_total)->toBe(130.0);
 });
 
 test('system admin cannot create purchase requests', function () {
@@ -347,4 +348,139 @@ test('requested quantity cannot exceed usable leftover this quarter', function (
         ]);
 
     expect(PurchaseRequest::query()->count())->toBe(0);
+});
+
+test('stores a custom item description and unit cost', function () {
+    Notification::fake();
+
+    $description = rtrim('Desktop computer. '.str_repeat('Intel Core i5, 16GB RAM. ', 12));
+
+    $this->actingAs($this->dean)->post(route('purchase-requests.store'), [
+        'pr_title' => 'Faculty computers',
+        'purpose' => 'For the laboratory',
+        'items' => [
+            [
+                'ppmp_item_id' => $this->ppmpItem->id,
+                'quantity_requested' => 2,
+                'item_name' => $description,
+                'estimated_unit_cost' => 180.5,
+            ],
+        ],
+    ])->assertRedirect();
+
+    $purchaseRequest = PurchaseRequest::query()->first();
+    $line = $purchaseRequest?->items()->first();
+    $budget = DepartmentBudget::query()
+        ->where('department_id', $this->department->id)
+        ->where('fiscal_year', $this->fiscalYear)
+        ->first();
+
+    expect($line)->not->toBeNull()
+        ->and($line->item_name)->toBe($description)
+        ->and(strlen($description))->toBeGreaterThan(255)
+        ->and((float) $line->estimated_unit_cost)->toBe(180.5)
+        ->and((float) $line->estimated_total_cost)->toBe(361.0)
+        ->and((float) $purchaseRequest->estimated_total)->toBe(361.0)
+        ->and((float) $budget->reserved_budget)->toBe(361.0);
+});
+
+test('uses the catalog name and ppmp unit cost when a line omits them', function () {
+    Notification::fake();
+
+    $this->actingAs($this->dean)->post(route('purchase-requests.store'), [
+        'pr_title' => 'Office supplies',
+        'purpose' => 'For classes',
+        'items' => [
+            [
+                'ppmp_item_id' => $this->ppmpItem->id,
+                'quantity_requested' => 4,
+            ],
+        ],
+    ])->assertRedirect();
+
+    $line = PurchaseRequest::query()->first()?->items()->first();
+
+    expect($line)->not->toBeNull()
+        ->and($line->item_name)->toBe('Ballpen')
+        ->and((float) $line->estimated_unit_cost)->toBe(25.0)
+        ->and((float) $line->estimated_total_cost)->toBe(100.0);
+});
+
+test('rejects a negative unit cost', function () {
+    $this->actingAs($this->dean)
+        ->post(route('purchase-requests.store'), [
+            'pr_title' => 'Office supplies',
+            'purpose' => 'For classes',
+            'items' => [
+                [
+                    'ppmp_item_id' => $this->ppmpItem->id,
+                    'quantity_requested' => 1,
+                    'estimated_unit_cost' => -1,
+                ],
+            ],
+        ])
+        ->assertSessionHasErrors([
+            'items.0.estimated_unit_cost' => 'Unit cost cannot be negative.',
+        ]);
+
+    expect(PurchaseRequest::query()->count())->toBe(0);
+});
+
+test('prices a lot once from its items custom unit costs', function () {
+    Notification::fake();
+
+    $secondCatalog = AppItem::factory()->create([
+        'fiscal_year' => $this->fiscalYear,
+        'item_code' => 'BP-003',
+        'item_name' => 'Notebook',
+        'unit_price' => 40.00,
+    ]);
+
+    $quantities = [0, 0, 0, 0];
+    $quantities[$this->quarter - 1] = 20;
+
+    $secondPpmpItem = PpmpItem::factory()->for($this->ppmp)->create([
+        'app_item_id' => $secondCatalog->id,
+        'q1_quantity' => $quantities[0],
+        'q2_quantity' => $quantities[1],
+        'q3_quantity' => $quantities[2],
+        'q4_quantity' => $quantities[3],
+        'total_quantity' => 20,
+        'estimated_unit_cost' => 40.00,
+        'estimated_total_cost' => 800.00,
+    ]);
+
+    $this->actingAs($this->dean)->post(route('purchase-requests.store'), [
+        'pr_title' => 'Lot request',
+        'purpose' => 'Grouped supplies',
+        'items' => [
+            [
+                'is_lot' => true,
+                'lot_name' => 'Writing lot',
+            ],
+            [
+                'ppmp_item_id' => $this->ppmpItem->id,
+                'quantity_requested' => 2,
+                'item_name' => 'Ballpen, black, 0.5mm',
+                'estimated_unit_cost' => 30,
+                'parent_lot_index' => 0,
+            ],
+            [
+                'ppmp_item_id' => $secondPpmpItem->id,
+                'quantity_requested' => 2,
+                'item_name' => 'Notebook, 80 leaves',
+                'estimated_unit_cost' => 55,
+                'parent_lot_index' => 0,
+            ],
+        ],
+    ])->assertRedirect();
+
+    $purchaseRequest = PurchaseRequest::query()->first();
+    $lot = $purchaseRequest?->items()->where('is_lot', true)->first();
+
+    expect($lot)->not->toBeNull()
+        ->and((float) $lot->estimated_unit_cost)->toBe(170.0)
+        ->and((float) $lot->quantity_requested)->toBe(1.0)
+        ->and((float) $purchaseRequest->estimated_total)->toBe(170.0)
+        ->and($purchaseRequest->items()->where('item_name', 'Ballpen, black, 0.5mm')->exists())->toBeTrue();
 });

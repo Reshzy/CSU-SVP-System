@@ -55,10 +55,7 @@ export default function PurchaseRequestCreate({
                 return sum;
             }
 
-            return (
-                sum +
-                line.quantity_requested * Number(item.estimated_unit_cost)
-            );
+            return sum + line.quantity_requested * Number(line.estimated_unit_cost);
         }, 0);
     }, [availableItems, lines]);
 

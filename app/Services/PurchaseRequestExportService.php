@@ -12,6 +12,10 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class PurchaseRequestExportService
 {
+    private const int FIRST_ITEM_ROW = 11;
+
+    private const int LAST_ITEM_ROW = 55;
+
     public function download(PurchaseRequest $purchaseRequest): BinaryFileResponse
     {
         $template = storage_path('app/templates/PurchaseRequestTemplate.xlsx');
@@ -24,9 +28,15 @@ class PurchaseRequestExportService
 
         $spreadsheet = IOFactory::load($template);
         $templateSheet = $spreadsheet->getActiveSheet();
-        $chunks = $this->orderedItems($purchaseRequest)->chunk(45)->values();
-        $pageCount = max(1, $chunks->count());
+        $lines = $this->orderedItems($purchaseRequest);
+        $chunks = $lines->chunk(self::LAST_ITEM_ROW - self::FIRST_ITEM_ROW + 1)->values();
+
+        if ($chunks->isEmpty()) {
+            $chunks = collect([collect()]);
+        }
+
         $ceoName = User::role('Executive Officer')->value('name');
+        $stockNumber = 1;
 
         foreach ($chunks as $pageIndex => $chunk) {
             if ($pageIndex === 0) {
@@ -38,8 +48,8 @@ class PurchaseRequestExportService
             }
 
             $this->fillHeader($sheet, $purchaseRequest, $ceoName);
-            $this->fillItems($sheet, $chunk);
-            $sheet->setCellValue('C56', ($pageIndex + 1).' of '.$pageCount);
+            $this->fillItems($sheet, $chunk->values(), $stockNumber);
+            $stockNumber += $chunk->count();
         }
 
         $directory = storage_path('app/temp');
@@ -59,7 +69,7 @@ class PurchaseRequestExportService
     private function fillHeader(Worksheet $sheet, PurchaseRequest $purchaseRequest, ?string $ceoName): void
     {
         $sheet->setCellValue('D7', $purchaseRequest->pr_number);
-        $sheet->setCellValue('F7', optional($purchaseRequest->created_at)->format('Y-m-d'));
+        $sheet->setCellValue('F7', 'Date: '.optional($purchaseRequest->created_at)->format('Y-m-d'));
         $sheet->setCellValue('B58', $purchaseRequest->purpose);
         $sheet->setCellValue('B66', $purchaseRequest->requester?->name);
         $sheet->setCellValue('B67', $purchaseRequest->requester?->position?->name);
@@ -69,41 +79,67 @@ class PurchaseRequestExportService
     /**
      * @param  Collection<int, PurchaseRequestItem>  $items
      */
-    private function fillItems(Worksheet $sheet, Collection $items): void
+    private function fillItems(Worksheet $sheet, Collection $items, int $startingNumber): void
     {
-        $row = 11;
+        $this->clearItemRows($sheet);
+
+        $row = self::FIRST_ITEM_ROW;
+        $stockNumber = $startingNumber;
 
         foreach ($items as $item) {
-            $name = $item->is_lot ? $item->lot_name : $item->item_name;
-            $uom = $item->is_lot ? 'lot' : $item->unit_of_measure;
-            $description = $item->parent_lot_id ? '    '.$name : $name;
+            $sheet->setCellValue("A{$row}", $stockNumber);
+            $sheet->setCellValue("B{$row}", $this->unit($item));
+            $sheet->setCellValue("C{$row}", $this->description($item));
+            $sheet->getStyle("C{$row}")->getAlignment()->setWrapText(true);
+            $sheet->setCellValue("E{$row}", $item->quantity_requested);
+            $sheet->setCellValue("F{$row}", $item->estimated_unit_cost);
+            $sheet->setCellValue("G{$row}", "=F{$row}*E{$row}");
 
-            $sheet->setCellValue("A{$row}", $item->item_code);
-            $sheet->setCellValue("B{$row}", $name);
-            $sheet->setCellValue("C{$row}", $item->parent_lot_id ? $description : $uom);
-            $sheet->setCellValue("D{$row}", $item->quantity_requested);
-            $sheet->setCellValue("E{$row}", $item->estimated_unit_cost);
-            $sheet->setCellValue("F{$row}", $item->estimated_total_cost);
+            $stockNumber++;
             $row++;
         }
     }
 
+    private function clearItemRows(Worksheet $sheet): void
+    {
+        for ($row = self::FIRST_ITEM_ROW; $row <= self::LAST_ITEM_ROW; $row++) {
+            foreach (['A', 'B', 'C', 'E', 'F'] as $column) {
+                $sheet->setCellValue("{$column}{$row}", null);
+            }
+
+            $sheet->setCellValue("G{$row}", "=F{$row}*E{$row}");
+        }
+    }
+
+    private function unit(PurchaseRequestItem $item): string
+    {
+        if ($item->is_lot) {
+            return 'lot';
+        }
+
+        return $item->unit_of_measure ?? '';
+    }
+
+    private function description(PurchaseRequestItem $item): string
+    {
+        if ($item->is_lot) {
+            return $item->lot_name ?: ($item->item_name ?? '');
+        }
+
+        return $item->item_name ?? '';
+    }
+
     /**
+     * Top-level lines only. A lot is one row; its children stay in the database
+     * and are omitted from the printed form.
+     *
      * @return Collection<int, PurchaseRequestItem>
      */
     private function orderedItems(PurchaseRequest $purchaseRequest): Collection
     {
-        $items = $purchaseRequest->items;
-        $ordered = collect();
-
-        foreach ($items->whereNull('parent_lot_id') as $item) {
-            $ordered->push($item);
-
-            if ($item->is_lot) {
-                $ordered = $ordered->concat($items->where('parent_lot_id', $item->id));
-            }
-        }
-
-        return $ordered->values();
+        return $purchaseRequest->items
+            ->whereNull('parent_lot_id')
+            ->sortBy('id')
+            ->values();
     }
 }

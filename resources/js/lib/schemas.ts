@@ -7,6 +7,8 @@ export const purchaseRequestItemSchema = z
         parent_lot_index: z.number().int().min(0).optional().nullable(),
         ppmp_item_id: z.number().int().optional().nullable(),
         quantity_requested: z.number().int().min(1).optional().nullable(),
+        item_name: z.string().optional().nullable(),
+        estimated_unit_cost: z.number().min(0).optional().nullable(),
     })
     .superRefine((item, context) => {
         if (item.is_lot) {
@@ -34,6 +36,22 @@ export const purchaseRequestItemSchema = z
                 code: 'custom',
                 message: 'Quantity must be at least 1.',
                 path: ['quantity_requested'],
+            });
+        }
+
+        if (!item.item_name || item.item_name.trim() === '') {
+            context.addIssue({
+                code: 'custom',
+                message: 'Item description is required.',
+                path: ['item_name'],
+            });
+        }
+
+        if (item.estimated_unit_cost === undefined || item.estimated_unit_cost === null) {
+            context.addIssue({
+                code: 'custom',
+                message: 'Unit cost is required.',
+                path: ['estimated_unit_cost'],
             });
         }
     });

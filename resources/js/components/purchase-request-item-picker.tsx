@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import { index as ppmpIndex, summary as ppmpSummary } from '@/routes/ppmp';
@@ -38,6 +39,8 @@ export type PurchaseRequestCartLine = {
     ppmp_item_id: number;
     quantity_requested: number;
     lot_id: string | null;
+    item_name: string;
+    estimated_unit_cost: number;
 };
 
 export type PurchaseRequestCartLot = {
@@ -51,6 +54,8 @@ export type PurchaseRequestItemPayload = {
     ppmp_item_id: number | null;
     quantity_requested: number | null;
     parent_lot_index: number | null;
+    item_name?: string | null;
+    estimated_unit_cost?: number | null;
 };
 
 type CatalogContextValue = {
@@ -224,6 +229,8 @@ export function cartItemsPayload(
                 ppmp_item_id: child.ppmp_item_id,
                 quantity_requested: child.quantity_requested,
                 parent_lot_index: headerIndex,
+                item_name: child.item_name,
+                estimated_unit_cost: child.estimated_unit_cost,
             });
         }
     }
@@ -235,6 +242,8 @@ export function cartItemsPayload(
             ppmp_item_id: line.ppmp_item_id,
             quantity_requested: line.quantity_requested,
             parent_lot_index: null,
+            item_name: line.item_name,
+            estimated_unit_cost: line.estimated_unit_cost,
         });
     }
 
@@ -518,12 +527,37 @@ export function PurchaseRequestItemPicker({
                         ppmp_item_id: item.id,
                         quantity_requested: Math.min(item.remaining_qty, increment),
                         lot_id: null,
+                        item_name: item.item_name ?? '',
+                        estimated_unit_cost: Number(item.estimated_unit_cost),
                     },
                 ];
             }
         }
 
         onLinesChange(next);
+    }
+
+    function setLineDescription(ppmpItemId: number, itemName: string): void {
+        onLinesChange(
+            lines.map((line) =>
+                line.ppmp_item_id === ppmpItemId
+                    ? { ...line, item_name: itemName }
+                    : line,
+            ),
+        );
+    }
+
+    function setLineUnitCost(ppmpItemId: number, raw: string): void {
+        const parsed = Number(raw);
+        const estimatedUnitCost = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+
+        onLinesChange(
+            lines.map((line) =>
+                line.ppmp_item_id === ppmpItemId
+                    ? { ...line, estimated_unit_cost: estimatedUnitCost }
+                    : line,
+            ),
+        );
     }
 
     function setLineQuantity(ppmpItemId: number, raw: string): void {
@@ -853,6 +887,8 @@ export function PurchaseRequestItemPicker({
                                                     selectable={false}
                                                     selected={false}
                                                     onToggleSelected={() => undefined}
+                                                    onDescriptionChange={setLineDescription}
+                                                    onUnitCostChange={setLineUnitCost}
                                                     onQuantityChange={setLineQuantity}
                                                     onRemove={removeLine}
                                                 />
@@ -899,6 +935,8 @@ export function PurchaseRequestItemPicker({
                                                     event,
                                                 )
                                             }
+                                            onDescriptionChange={setLineDescription}
+                                            onUnitCostChange={setLineUnitCost}
                                             onQuantityChange={setLineQuantity}
                                             onRemove={removeLine}
                                         />
@@ -925,6 +963,8 @@ function CartLineRow({
     onToggleSelected,
     onActivate,
     onPointerDown,
+    onDescriptionChange,
+    onUnitCostChange,
     onQuantityChange,
     onRemove,
 }: {
@@ -935,12 +975,13 @@ function CartLineRow({
     onToggleSelected: (ppmpItemId: number, checked: boolean) => void;
     onActivate?: () => void;
     onPointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+    onDescriptionChange: (ppmpItemId: number, itemName: string) => void;
+    onUnitCostChange: (ppmpItemId: number, raw: string) => void;
     onQuantityChange: (ppmpItemId: number, raw: string) => void;
     onRemove: (ppmpItemId: number) => void;
 }) {
     const remaining = item?.remaining_qty ?? 0;
-    const unitCost = Number(item?.estimated_unit_cost ?? 0);
-    const lineTotal = line.quantity_requested * unitCost;
+    const lineTotal = line.quantity_requested * Number(line.estimated_unit_cost);
 
     return (
         <div
@@ -980,7 +1021,7 @@ function CartLineRow({
                     : undefined
             }
             className={cn(
-                'grid items-end gap-3 rounded-lg border p-3 md:grid-cols-[auto_1fr_8rem_8rem_auto]',
+                'grid items-end gap-3 rounded-lg border p-3 md:grid-cols-[auto_minmax(0,1fr)_5.5rem_5.5rem_7rem_7rem_auto]',
                 selectable && 'cursor-pointer',
                 selected && 'bg-accent ring-2 ring-ring',
             )}
@@ -992,16 +1033,29 @@ function CartLineRow({
                         onToggleSelected(line.ppmp_item_id, checked === true)
                     }
                     onClick={(event) => event.stopPropagation()}
-                    aria-label={`Select ${item?.item_name ?? 'item'}`}
+                    aria-label={`Select ${line.item_name || item?.item_name || 'item'}`}
                 />
             ) : (
                 <span />
             )}
-            <div className="min-w-0">
-                <p className="font-medium">{item?.item_name ?? 'Unknown item'}</p>
+            <div className="min-w-0 space-y-1" data-cart-line-ignore="">
+                <Label htmlFor={`cart-name-${line.ppmp_item_id}`}>Item description</Label>
+                <Textarea
+                    id={`cart-name-${line.ppmp_item_id}`}
+                    value={line.item_name}
+                    onChange={(event) =>
+                        onDescriptionChange(line.ppmp_item_id, event.target.value)
+                    }
+                    className="min-h-16"
+                    data-testid="cart-description"
+                />
                 <p className="text-muted-foreground font-mono text-xs">
                     {item?.item_code} · rem {remaining}
                 </p>
+            </div>
+            <div className="space-y-1">
+                <p className="text-sm font-medium">Unit</p>
+                <p className="text-sm">{item?.unit_of_measure ?? 'pc'}</p>
             </div>
             <div className="space-y-1" data-cart-line-ignore="">
                 <Label htmlFor={`cart-qty-${line.ppmp_item_id}`}>Qty</Label>
@@ -1015,6 +1069,20 @@ function CartLineRow({
                         onQuantityChange(line.ppmp_item_id, event.target.value)
                     }
                     data-testid="cart-qty"
+                />
+            </div>
+            <div className="space-y-1" data-cart-line-ignore="">
+                <Label htmlFor={`cart-cost-${line.ppmp_item_id}`}>Unit cost</Label>
+                <Input
+                    id={`cart-cost-${line.ppmp_item_id}`}
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={line.estimated_unit_cost}
+                    onChange={(event) =>
+                        onUnitCostChange(line.ppmp_item_id, event.target.value)
+                    }
+                    data-testid="cart-unit-cost"
                 />
             </div>
             <p className="text-sm tabular-nums">{formatMoney(lineTotal)}</p>
