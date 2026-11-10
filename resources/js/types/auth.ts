@@ -38,6 +38,7 @@ export type User = {
     name: string;
     email: string;
     avatar?: string;
+    avatar_path?: string | null;
     email_verified_at: string | null;
     two_factor_enabled?: boolean;
     department_id: number | null;

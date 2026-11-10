@@ -5,16 +5,19 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Enums\ApprovalStatus;
 use Database\Factories\UserFactory;
+use Illuminate\Database\Eloquent\Attributes\Appends;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Fortify\Contracts\PasskeyUser;
 use Laravel\Fortify\PasskeyAuthenticatable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
@@ -30,6 +33,8 @@ use Spatie\Permission\Traits\HasRoles;
  * @property int|null $position_id
  * @property string|null $employee_id
  * @property string|null $phone
+ * @property string|null $avatar_path
+ * @property-read string $avatar
  * @property bool $is_active
  * @property bool $is_archived
  * @property ApprovalStatus $approval_status
@@ -55,6 +60,7 @@ use Spatie\Permission\Traits\HasRoles;
     'phone',
 ])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
+#[Appends(['avatar'])]
 class User extends Authenticatable implements PasskeyUser
 {
     /** @use HasFactory<UserFactory> */
@@ -166,6 +172,26 @@ class User extends Authenticatable implements PasskeyUser
     public function canCreatePurchaseRequests(): bool
     {
         return ! $this->hasRole('System Admin');
+    }
+
+    /**
+     * The uploaded profile photo, or an animated DiceBear Sprouts avatar seeded
+     * by ID so the user's email is never sent to the DiceBear API.
+     *
+     * @return Attribute<string, never>
+     */
+    protected function avatar(): Attribute
+    {
+        return Attribute::get(function (): string {
+            if (filled($this->avatar_path)) {
+                return Storage::disk('public')->url($this->avatar_path);
+            }
+
+            return 'https://api.dicebear.com/10.x/sprouts/svg?'.http_build_query([
+                'seed' => $this->id,
+                'tags' => 'animation',
+            ]);
+        });
     }
 
     /**

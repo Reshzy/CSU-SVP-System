@@ -14,6 +14,7 @@ import {
     Store,
     UserCheck,
 } from 'lucide-react';
+import type { MouseEvent } from 'react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -26,6 +27,7 @@ import {
     SidebarMenu,
     SidebarMenuButton,
     SidebarMenuItem,
+    useSidebar,
 } from '@/components/ui/sidebar';
 import { dashboard, uiKit } from '@/routes';
 import { index as consolidatedAppIndex } from '@/routes/bac/app';
@@ -192,8 +194,12 @@ const executiveOfficerNavItems: NavItem[] = [
 
 const footerNavItems: NavItem[] = [];
 
+const SIDEBAR_INTERACTIVE_SELECTOR =
+    'a, button, input, textarea, select, [data-sidebar="menu-button"], [data-sidebar="menu-action"], [role="menuitem"]';
+
 export function AppSidebar() {
     const { auth } = usePage().props;
+    const { toggleSidebar } = useSidebar();
 
     // Display hints only; the routes themselves sit behind
     // `role:` and `can:` middleware on the server.
@@ -208,63 +214,85 @@ export function AppSidebar() {
         auth.roles.includes(role),
     );
 
+    function handleSidebarClick(event: MouseEvent<HTMLDivElement>) {
+        const target = event.target;
+
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        if (target.closest(SIDEBAR_INTERACTIVE_SELECTOR)) {
+            return;
+        }
+
+        toggleSidebar();
+    }
+
     return (
         <Sidebar collapsible="icon" variant="inset">
-            <SidebarHeader>
-                <SidebarMenu>
-                    <SidebarMenuItem>
-                        <SidebarMenuButton size="lg" asChild>
-                            <Link href={dashboard()} prefetch>
-                                <AppLogo />
-                            </Link>
-                        </SidebarMenuButton>
-                    </SidebarMenuItem>
-                </SidebarMenu>
-            </SidebarHeader>
+            <div
+                className="flex h-full min-h-0 w-full flex-col"
+                onClick={handleSidebarClick}
+            >
+                <SidebarHeader>
+                    <SidebarMenu>
+                        <SidebarMenuItem>
+                            <SidebarMenuButton size="lg" asChild>
+                                <Link href={dashboard()} prefetch>
+                                    <AppLogo />
+                                </Link>
+                            </SidebarMenuButton>
+                        </SidebarMenuItem>
+                    </SidebarMenu>
+                </SidebarHeader>
 
-            <SidebarContent>
-                <NavMain items={mainNavItems} />
+                <SidebarContent>
+                    <NavMain items={mainNavItems} />
 
-                {isSupplyOfficer && (
-                    <NavMain items={supplyNavItems} label="Supply" />
-                )}
+                    {isSupplyOfficer && (
+                        <NavMain items={supplyNavItems} label="Supply" />
+                    )}
 
-                {auth.can?.manageSuppliers && (
-                    <NavMain items={supplierNavItems} label="Suppliers" />
-                )}
+                    {auth.can?.manageSuppliers && (
+                        <NavMain items={supplierNavItems} label="Suppliers" />
+                    )}
 
-                {auth.can?.viewReports && (
-                    <NavMain items={reportNavItems} label="Reports" />
-                )}
+                    {auth.can?.viewReports && (
+                        <NavMain items={reportNavItems} label="Reports" />
+                    )}
 
-                {isAccountingOffice && (
-                    <NavMain items={accountingNavItems} label="Accounting" />
-                )}
+                    {isAccountingOffice && (
+                        <NavMain items={accountingNavItems} label="Accounting" />
+                    )}
 
-                {isBudgetOffice && (
-                    <NavMain items={budgetNavItems} label="Budget" />
-                )}
+                    {isBudgetOffice && (
+                        <NavMain items={budgetNavItems} label="Budget" />
+                    )}
 
-                {isBac && <NavMain items={bacNavItems} label="BAC" />}
+                    {isBac && <NavMain items={bacNavItems} label="BAC" />}
 
-                {managesCatalog && (
-                    <NavMain items={planningNavItems} label="Planning" />
-                )}
+                    {managesCatalog && (
+                        <NavMain items={planningNavItems} label="Planning" />
+                    )}
 
-                {isExecutiveOfficer && (
-                    <NavMain
-                        items={[...ceoPrNavItems, ...executiveOfficerNavItems]}
-                        label="Executive Officer"
-                    />
-                )}
-            </SidebarContent>
+                    {isExecutiveOfficer && (
+                        <NavMain
+                            items={[
+                                ...ceoPrNavItems,
+                                ...executiveOfficerNavItems,
+                            ]}
+                            label="Executive Officer"
+                        />
+                    )}
+                </SidebarContent>
 
-            <SidebarFooter>
-                {footerNavItems.length > 0 && (
-                    <NavFooter items={footerNavItems} className="mt-auto" />
-                )}
-                <NavUser />
-            </SidebarFooter>
+                <SidebarFooter>
+                    {footerNavItems.length > 0 && (
+                        <NavFooter items={footerNavItems} className="mt-auto" />
+                    )}
+                    <NavUser />
+                </SidebarFooter>
+            </div>
         </Sidebar>
     );
 }
