@@ -26,6 +26,7 @@ test('approved users get the role their position maps to', function (string $pos
     ['BAC Secretary', 'BAC Secretariat'],
     ['Accounting Officer', 'Accounting Office'],
     ['Canvassing Officer', 'Canvassing Unit'],
+    ['College Dean', 'Dean'],
     ['Dean', 'Dean'],
     ['Employee', 'End User'],
 ]);

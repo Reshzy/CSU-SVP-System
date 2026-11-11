@@ -83,3 +83,38 @@ test('correct password must be provided to delete account', function () {
 
     expect($user->fresh())->not->toBeNull();
 });
+test('designation can be set and cleared', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->patch(route('profile.update'), [
+            'name' => $user->name,
+            'email' => $user->email,
+            'designation' => 'College Dean',
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect($user->refresh()->designation)->toBe('College Dean');
+
+    $this->actingAs($user)
+        ->patch(route('profile.update'), [
+            'name' => $user->name,
+            'email' => $user->email,
+            'designation' => '',
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect($user->refresh()->designation)->toBeNull();
+});
+
+test('designation may not exceed 255 characters', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->patch(route('profile.update'), [
+            'name' => $user->name,
+            'email' => $user->email,
+            'designation' => str_repeat('a', 256),
+        ])
+        ->assertSessionHasErrors('designation');
+});

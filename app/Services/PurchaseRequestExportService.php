@@ -21,6 +21,8 @@ class PurchaseRequestExportService
 
     private const string LOT_CHILD_INDENT = '  ';
 
+    public const string DEFAULT_APPROVER_DESIGNATION = 'Campus Executive Officer';
+
     public function __construct(private PurchaseRequestDescriptionLines $descriptionLines) {}
 
     public function download(PurchaseRequest $purchaseRequest): BinaryFileResponse
@@ -60,11 +62,11 @@ class PurchaseRequestExportService
             $templateSheet->setTitle('Page 1');
         }
 
-        $ceoName = User::role('Executive Officer')->value('name');
+        $executiveOfficer = User::signingExecutiveOfficer();
         $stockNumber = 1;
 
         foreach ($sheets as $pageIndex => $sheet) {
-            $this->fillHeader($sheet, $purchaseRequest, $ceoName);
+            $this->fillHeader($sheet, $purchaseRequest, $executiveOfficer);
             $this->fillItems($sheet, $pages[$pageIndex], $stockNumber);
             $stockNumber += count(array_filter(
                 $pages[$pageIndex],
@@ -86,14 +88,26 @@ class PurchaseRequestExportService
             ->deleteFileAfterSend(true);
     }
 
-    private function fillHeader(Worksheet $sheet, PurchaseRequest $purchaseRequest, ?string $ceoName): void
+    /**
+     * The "Approved by" designation for the signing Executive Officer: their
+     * own designation when set, otherwise the campus title.
+     */
+    public static function approverDesignation(?User $executiveOfficer): string
+    {
+        return filled($executiveOfficer?->designation)
+            ? $executiveOfficer->designation
+            : self::DEFAULT_APPROVER_DESIGNATION;
+    }
+
+    private function fillHeader(Worksheet $sheet, PurchaseRequest $purchaseRequest, ?User $executiveOfficer): void
     {
         $sheet->setCellValue('D7', $purchaseRequest->pr_number);
         $sheet->setCellValue('F7', 'Date: '.optional($purchaseRequest->created_at)->format('Y-m-d'));
         $sheet->setCellValue('B58', $purchaseRequest->purpose);
         $sheet->setCellValue('B66', $purchaseRequest->requester?->name);
-        $sheet->setCellValue('B67', $purchaseRequest->requester?->position?->name);
-        $sheet->setCellValue('E66', $ceoName);
+        $sheet->setCellValue('B67', $purchaseRequest->requester?->signatureDesignation());
+        $sheet->setCellValue('E66', $executiveOfficer?->name);
+        $sheet->setCellValue('E67', self::approverDesignation($executiveOfficer));
     }
 
     /**

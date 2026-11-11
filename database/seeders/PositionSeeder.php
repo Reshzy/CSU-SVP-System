@@ -20,6 +20,7 @@ class PositionSeeder extends Seeder
         'System Administrator',
         'Supply Officer',
         'Employee',
+        'College Dean',
         'Budget Officer',
         'Executive Officer',
         'BAC Chairman',

@@ -1,7 +1,8 @@
-import { Head } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react';
 import Heading from '@/components/heading';
 import { PrTimeline, type TimelineActivity } from '@/components/pr-timeline';
 import { Button } from '@/components/ui/button';
+import { edit } from '@/routes/profile';
 import { exportMethod, index } from '@/routes/purchase-requests';
 
 type Item = {
@@ -32,12 +33,34 @@ type PurchaseRequest = {
     activities: TimelineActivity[];
 };
 
+type Signatory = {
+    name: string | null;
+    designation: string | null;
+};
+
+type Signatories = {
+    requestedBy: Signatory;
+    approvedBy: Signatory;
+    isRequester: boolean;
+};
+
 type Props = {
     purchaseRequest: PurchaseRequest;
     statusLabel: string;
+    signatories: Signatories;
 };
 
-export default function PurchaseRequestShow({ purchaseRequest, statusLabel }: Props) {
+function SignatoryBlock({ label, signatory }: { label: string; signatory: Signatory }) {
+    return (
+        <div className="space-y-1">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+            <p className="font-medium">{signatory.name ?? 'Not set'}</p>
+            <p className="italic text-muted-foreground">{signatory.designation ?? 'No designation'}</p>
+        </div>
+    );
+}
+
+export default function PurchaseRequestShow({ purchaseRequest, statusLabel, signatories }: Props) {
     return (
         <>
             <Head title={purchaseRequest.pr_number ?? 'Purchase request'} />
@@ -123,6 +146,24 @@ export default function PurchaseRequestShow({ purchaseRequest, statusLabel }: Pr
                             ))}
                         </tbody>
                     </table>
+                </div>
+
+                <div className="rounded-lg border p-4 text-sm" data-testid="pr-signatories">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h2 className="font-medium">Signatories</h2>
+                        {signatories.isRequester && (
+                            <Link
+                                href={edit()}
+                                className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+                            >
+                                Edit your name or designation
+                            </Link>
+                        )}
+                    </div>
+                    <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                        <SignatoryBlock label="Requested by" signatory={signatories.requestedBy} />
+                        <SignatoryBlock label="Approved by" signatory={signatories.approvedBy} />
+                    </div>
                 </div>
 
                 <div className="space-y-3">

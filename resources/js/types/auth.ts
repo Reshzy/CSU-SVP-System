@@ -43,6 +43,7 @@ export type User = {
     two_factor_enabled?: boolean;
     department_id: number | null;
     position_id: number | null;
+    designation: string | null;
     employee_id: string | null;
     phone: string | null;
     is_active: boolean;

@@ -24,6 +24,7 @@ class PositionRoleMap
         'BAC Secretary' => 'BAC Secretariat',
         'Accounting Officer' => 'Accounting Office',
         'Canvassing Officer' => 'Canvassing Unit',
+        'College Dean' => 'Dean',
         'Dean' => 'Dean',
         'Employee' => 'End User',
     ];

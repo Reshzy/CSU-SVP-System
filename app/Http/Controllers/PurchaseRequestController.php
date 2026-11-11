@@ -260,20 +260,34 @@ class PurchaseRequestController extends Controller
         return redirect()->route('purchase-requests.show', $purchaseRequest);
     }
 
-    public function show(PurchaseRequest $purchaseRequest): Response
+    public function show(Request $request, PurchaseRequest $purchaseRequest): Response
     {
         Gate::authorize('view', $purchaseRequest);
 
         $purchaseRequest->load([
             'department:id,name,code',
-            'requester:id,name,email',
+            'requester:id,name,email,position_id,designation',
+            'requester.position:id,name',
             'items',
             'activities.user:id,name',
         ]);
 
+        $executiveOfficer = User::signingExecutiveOfficer();
+
         return Inertia::render('purchase-requests/show', [
             'purchaseRequest' => $purchaseRequest,
             'statusLabel' => $purchaseRequest->statusLabel(),
+            'signatories' => [
+                'requestedBy' => [
+                    'name' => $purchaseRequest->requester?->name,
+                    'designation' => $purchaseRequest->requester?->signatureDesignation(),
+                ],
+                'approvedBy' => [
+                    'name' => $executiveOfficer?->name,
+                    'designation' => PurchaseRequestExportService::approverDesignation($executiveOfficer),
+                ],
+                'isRequester' => $purchaseRequest->requester_id === $request->user()->id,
+            ],
         ]);
     }
 

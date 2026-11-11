@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Department;
+use App\Models\Position;
 use App\Models\PurchaseRequest;
 use App\Models\PurchaseRequestItem;
 use App\Models\User;
@@ -383,3 +384,42 @@ function exportedPurchaseRequestWorkbook(PurchaseRequest $purchaseRequest, User 
 
     return IOFactory::load($response->baseResponse->getFile()->getPathname());
 }
+
+test('prints the requester designation, falling back to their position', function (?string $designation, string $expected) {
+    [$user, $purchaseRequest] = purchaseRequestReadyForExport();
+    $user->update([
+        'name' => 'Dr. Manny S. Alipio',
+        'position_id' => Position::factory()->create(['name' => 'College Dean'])->id,
+        'designation' => $designation,
+    ]);
+
+    $sheet = exportedPurchaseRequestWorkbook($purchaseRequest, $user)->getActiveSheet();
+
+    expect($sheet->getCell('B66')->getValue())->toBe('Dr. Manny S. Alipio')
+        ->and($sheet->getCell('B67')->getValue())->toBe($expected);
+})->with([
+    'own designation' => ['Dean, CICS', 'Dean, CICS'],
+    'position fallback' => [null, 'College Dean'],
+]);
+
+test('signs as the active executive officer with the campus title by default', function () {
+    [$user, $purchaseRequest] = purchaseRequestReadyForExport();
+
+    User::factory()->create(['name' => 'Former Officer', 'is_active' => false])->assignRole('Executive Officer');
+    User::factory()->create(['name' => 'Rodel Francisco T. Alegado'])->assignRole('Executive Officer');
+
+    $sheet = exportedPurchaseRequestWorkbook($purchaseRequest, $user)->getActiveSheet();
+
+    expect($sheet->getCell('E66')->getValue())->toBe('Rodel Francisco T. Alegado')
+        ->and($sheet->getCell('E67')->getValue())->toBe('Campus Executive Officer');
+});
+
+test('uses the executive officer designation when set', function () {
+    [$user, $purchaseRequest] = purchaseRequestReadyForExport();
+
+    User::factory()->create(['designation' => 'Campus Executive Officer II'])->assignRole('Executive Officer');
+
+    $sheet = exportedPurchaseRequestWorkbook($purchaseRequest, $user)->getActiveSheet();
+
+    expect($sheet->getCell('E67')->getValue())->toBe('Campus Executive Officer II');
+});

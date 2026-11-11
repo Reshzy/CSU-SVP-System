@@ -45,21 +45,22 @@ class ComprehensiveUserSeeder extends Seeder
     ];
 
     /**
-     * One dean per college, keyed by the code this seeder enforces.
+     * One dean per college, keyed by the code this seeder enforces. Names are
+     * printed as-is on the dean's purchase requests.
      *
-     * @var list<array{code: string, department: string, email: string}>
+     * @var list<array{code: string, name: string, department: string, email: string}>
      */
     public const DEANS = [
-        ['code' => 'CALEXT', 'department' => 'Calayan Extension', 'email' => 'calayanextension.sanchezmira@csu.edu.ph'],
-        ['code' => 'CA', 'department' => 'College of Agriculture', 'email' => 'maycmartinez03@csu.edu.ph'],
-        ['code' => 'CBEA', 'department' => 'College of Business Entrepreneurship and Accountancy', 'email' => 'cbea.sanchezmira@csu.edu.ph'],
-        ['code' => 'CCJE', 'department' => 'College of Criminal Justice Education', 'email' => 'ccje.csusm@csu.edu.ph'],
-        ['code' => 'COE', 'department' => 'College of Engineering', 'email' => 'coe.sanchezmira@csu.edu.ph'],
-        ['code' => 'CHM', 'department' => 'College of Hospitality Management', 'email' => 'angelabtuliao@csu.edu.ph'],
-        ['code' => 'CIT', 'department' => 'College of Industrial Technology', 'email' => 'cit.sanchezmira@csu.edu.ph'],
-        ['code' => 'CICS', 'department' => 'College of Information and Computing Sciences', 'email' => 'cics_csusm@csu.edu.ph'],
-        ['code' => 'CTED', 'department' => 'College of Teacher Education', 'email' => 'ctedcsusm@csu.edu.ph'],
-        ['code' => 'GS', 'department' => 'Graduate School', 'email' => 'graduateschool.sanchezmira@csu.edu.ph'],
+        ['code' => 'CALEXT', 'name' => 'Dullit, Rex S., MSA', 'department' => 'Calayan Extension', 'email' => 'calayanextension.sanchezmira@csu.edu.ph'],
+        ['code' => 'CA', 'name' => 'Ms. May M. Leaño', 'department' => 'College of Agriculture', 'email' => 'maycmartinez03@csu.edu.ph'],
+        ['code' => 'CBEA', 'name' => 'Mr. Rey D. Viloria, CPA', 'department' => 'College of Business Entrepreneurship and Accountancy', 'email' => 'cbea.sanchezmira@csu.edu.ph'],
+        ['code' => 'CCJE', 'name' => 'Dr. Jose Sheriff O. Panelo', 'department' => 'College of Criminal Justice Education', 'email' => 'ccje.csusm@csu.edu.ph'],
+        ['code' => 'COE', 'name' => 'Engr. Marvin D. Adorio', 'department' => 'College of Engineering', 'email' => 'coe.sanchezmira@csu.edu.ph'],
+        ['code' => 'CHM', 'name' => 'Ms. Angela B. Tuliao', 'department' => 'College of Hospitality Management', 'email' => 'angelabtuliao@csu.edu.ph'],
+        ['code' => 'CIT', 'name' => 'Ms. Jane Gladys A. Monje', 'department' => 'College of Industrial Technology', 'email' => 'cit.sanchezmira@csu.edu.ph'],
+        ['code' => 'CICS', 'name' => 'Dr. Manny S. Alipio', 'department' => 'College of Information and Computing Sciences', 'email' => 'cics_csusm@csu.edu.ph'],
+        ['code' => 'CTED', 'name' => 'Dr. Verlino D. Baddu', 'department' => 'College of Teacher Education', 'email' => 'ctedcsusm@csu.edu.ph'],
+        ['code' => 'GS', 'name' => 'Dr. Melba B. Rosales', 'department' => 'Graduate School', 'email' => 'graduateschool.sanchezmira@csu.edu.ph'],
     ];
 
     public function run(): void
@@ -80,16 +81,16 @@ class ComprehensiveUserSeeder extends Seeder
             $user->syncRoles([$office['role']]);
         }
 
-        $employee = Position::firstOrCreate(['name' => 'Employee']);
+        $collegeDean = Position::firstOrCreate(['name' => 'College Dean']);
 
         foreach (self::DEANS as $dean) {
             $department = $this->upsertDepartment($dean['department'], $dean['code']);
 
             $user = $this->upsertUser(
                 $dean['email'],
-                'Dean, '.$dean['department'],
+                $dean['name'],
                 $department,
-                $employee,
+                $collegeDean,
             );
 
             $user->syncRoles(['Dean']);

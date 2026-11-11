@@ -31,6 +31,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property string $password
  * @property int|null $department_id
  * @property int|null $position_id
+ * @property string|null $designation
  * @property string|null $employee_id
  * @property string|null $phone
  * @property string|null $avatar_path
@@ -56,6 +57,7 @@ use Spatie\Permission\Traits\HasRoles;
     'password',
     'department_id',
     'position_id',
+    'designation',
     'employee_id',
     'phone',
 ])]
@@ -100,6 +102,19 @@ class User extends Authenticatable implements PasskeyUser
     public function position(): BelongsTo
     {
         return $this->belongsTo(Position::class);
+    }
+
+    /**
+     * The title printed under this user's name on signed documents: their own
+     * designation when set, otherwise their position.
+     */
+    public function signatureDesignation(): ?string
+    {
+        if (filled($this->designation)) {
+            return $this->designation;
+        }
+
+        return $this->position?->name;
     }
 
     /**
@@ -201,6 +216,30 @@ class User extends Authenticatable implements PasskeyUser
     protected function awaitingApproval(Builder $query): void
     {
         $query->where('approval_status', ApprovalStatus::Pending);
+    }
+
+    /**
+     * @param  Builder<$this>  $query
+     */
+    #[Scope]
+    protected function approvedAndActive(Builder $query): void
+    {
+        $query->where('approval_status', ApprovalStatus::Approved)
+            ->where('is_active', true)
+            ->where('is_archived', false);
+    }
+
+    /**
+     * The Executive Officer who signs "Approved by" on purchase requests. The
+     * oldest approved, active account wins when more than one holds the role.
+     */
+    public static function signingExecutiveOfficer(): ?self
+    {
+        return static::role('Executive Officer')
+            ->approvedAndActive()
+            ->with('position')
+            ->oldest('id')
+            ->first();
     }
 
     /**

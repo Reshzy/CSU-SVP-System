@@ -95,11 +95,13 @@ test('the drifted codes do not coexist with the CollegeSeeder originals', functi
     ['GRADSCH', 'Graduate School'],
 ]);
 
-test('each dean is attached to their own college', function () {
+test('each dean is named, holds the College Dean position and is attached to their own college', function () {
     foreach (ComprehensiveUserSeeder::DEANS as $dean) {
         $user = User::where('email', $dean['email'])->sole();
 
-        expect($user->department->code)->toBe($dean['code'])
+        expect($user->name)->toBe($dean['name'])
+            ->and($user->position->name)->toBe('College Dean')
+            ->and($user->department->code)->toBe($dean['code'])
             ->and($user->department->name)->toBe($dean['department'])
             ->and($user->getRoleNames()->all())->toEqual(['Dean']);
     }

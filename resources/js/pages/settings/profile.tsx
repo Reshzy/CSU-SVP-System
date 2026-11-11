@@ -19,9 +19,11 @@ type PageProps = {
 export default function Profile({
     mustVerifyEmail,
     status,
+    positionName,
 }: {
     mustVerifyEmail: boolean;
     status?: string;
+    positionName: string | null;
 }) {
     const { auth } = usePage<PageProps>().props;
 
@@ -35,7 +37,7 @@ export default function Profile({
                 <Heading
                     variant="small"
                     title="Profile"
-                    description="Update your photo, name, and email address"
+                    description="Update your photo, name, designation, and email address"
                 />
 
                 <UpdateAvatar user={auth.user} />
@@ -62,9 +64,36 @@ export default function Profile({
                                     placeholder="Full name"
                                 />
 
+                                <p className="text-sm text-muted-foreground">
+                                    Include titles as they should appear on
+                                    documents, e.g. Dr. Juan D. Cruz.
+                                </p>
+
                                 <InputError
                                     className="mt-2"
                                     message={errors.name}
+                                />
+                            </div>
+
+                            <div className="grid gap-2">
+                                <Label htmlFor="designation">Designation</Label>
+
+                                <Input
+                                    id="designation"
+                                    className="mt-1 block w-full"
+                                    defaultValue={auth.user.designation ?? ''}
+                                    name="designation"
+                                    placeholder={positionName ?? 'e.g. College Dean'}
+                                />
+
+                                <p className="text-sm text-muted-foreground">
+                                    Printed under your name on purchase
+                                    requests. Leave blank to use your position.
+                                </p>
+
+                                <InputError
+                                    className="mt-2"
+                                    message={errors.designation}
                                 />
                             </div>
 
