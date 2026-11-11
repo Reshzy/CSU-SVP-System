@@ -185,8 +185,8 @@ export function DataTable<TData extends RowData>({
             enableSorting: false,
             enableHiding: false,
             enableResizing: false,
-            size: 64,
-            minSize: 64,
+            size: 128,
+            minSize: 128,
         }) as DataTableColumn<TData>;
     }, [rowActions]);
 
