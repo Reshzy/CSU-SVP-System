@@ -17,8 +17,16 @@ function Toaster({ ...props }: ToasterProps) {
                     '--normal-bg': 'var(--popover)',
                     '--normal-text': 'var(--popover-foreground)',
                     '--normal-border': 'var(--border)',
+                    '--border-radius': 'var(--radius-lg)',
                 } as React.CSSProperties
             }
+            toastOptions={{
+                classNames: {
+                    toast: 'shadow-lg! shadow-zinc-950/10! font-sans!',
+                    title: 'font-semibold! tracking-tight!',
+                    description: 'text-muted-foreground!',
+                },
+            }}
             {...props}
         />
     );

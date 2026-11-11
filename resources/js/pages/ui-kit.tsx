@@ -12,6 +12,7 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     Dialog,
     DialogContent,
@@ -32,6 +33,21 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { uiKit } from '@/routes';
 
 const brandSwatches = [
@@ -48,6 +64,33 @@ const semanticSwatches = [
     { name: 'muted', className: 'bg-muted' },
     { name: 'destructive', className: 'bg-destructive' },
 ];
+
+const sampleRequests = [
+    {
+        number: 'PR-2026-0142',
+        office: 'College of Engineering',
+        status: 'Approved',
+        amount: '48,250.00',
+    },
+    {
+        number: 'PR-2026-0143',
+        office: 'Supply Office',
+        status: 'Draft',
+        amount: '12,900.00',
+    },
+    {
+        number: 'PR-2026-0144',
+        office: 'Registrar',
+        status: 'Deferred',
+        amount: '7,415.50',
+    },
+] as const;
+
+const statusBadgeVariant = {
+    Approved: 'default',
+    Draft: 'outline',
+    Deferred: 'destructive',
+} as const;
 
 const fundClusters = [
     { code: '01', label: 'Regular Agency Fund' },
@@ -180,6 +223,94 @@ export default function UiKit() {
                                 </SelectContent>
                             </Select>
                         </div>
+
+                        <div className="space-y-2 sm:col-span-2">
+                            <Label htmlFor="pr-purpose">Purpose</Label>
+                            <Textarea
+                                id="pr-purpose"
+                                placeholder="State the purpose of this purchase request"
+                            />
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <Checkbox id="pr-urgent" />
+                            <Label htmlFor="pr-urgent">
+                                Mark as urgent procurement
+                            </Label>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+                            <ToggleGroup type="single" defaultValue="all">
+                                <ToggleGroupItem value="all">
+                                    All
+                                </ToggleGroupItem>
+                                <ToggleGroupItem value="pending">
+                                    Pending
+                                </ToggleGroupItem>
+                                <ToggleGroupItem value="approved">
+                                    Approved
+                                </ToggleGroupItem>
+                            </ToggleGroup>
+
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button variant="outline" size="icon">
+                                        <CircleAlert />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    Filter by status
+                                </TooltipContent>
+                            </Tooltip>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Table</CardTitle>
+                        <CardDescription>
+                            Mono uppercase headers, hairline rows, tabular
+                            figures.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>PR number</TableHead>
+                                    <TableHead>Office</TableHead>
+                                    <TableHead>Status</TableHead>
+                                    <TableHead className="text-right">
+                                        Amount
+                                    </TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {sampleRequests.map((request) => (
+                                    <TableRow key={request.number}>
+                                        <TableCell className="font-medium">
+                                            {request.number}
+                                        </TableCell>
+                                        <TableCell>{request.office}</TableCell>
+                                        <TableCell>
+                                            <Badge
+                                                variant={
+                                                    statusBadgeVariant[
+                                                        request.status
+                                                    ]
+                                                }
+                                            >
+                                                {request.status}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            ₱{request.amount}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
                     </CardContent>
                 </Card>
 

@@ -12,6 +12,9 @@
         'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
         'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
         'Noto Color Emoji';
+    --font-mono:
+        'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas,
+        monospace;
 
     --radius-lg: var(--radius);
     --radius-md: calc(var(--radius) - 2px);
@@ -49,6 +52,7 @@
     --color-border: var(--border);
     --color-input: var(--input);
     --color-ring: var(--ring);
+    --color-focus: var(--focus);
 
     --color-chart-1: var(--chart-1);
     --color-chart-2: var(--chart-2);
@@ -72,74 +76,98 @@
     --brand-orange: #ff8c00;
     --brand-blue: #1d4ed8;
 
-    --background: oklch(0.994 0.003 70);
-    --foreground: oklch(0.205 0.012 29);
+    /* Paper & ink: warm off-white surfaces, near-black warm ink. */
+    --background: oklch(0.982 0.004 80);
+    --foreground: oklch(0.17 0.008 40);
     --card: oklch(1 0 0);
-    --card-foreground: oklch(0.205 0.012 29);
+    --card-foreground: oklch(0.17 0.008 40);
     --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.205 0.012 29);
+    --popover-foreground: oklch(0.17 0.008 40);
     --primary: var(--brand-maroon);
     --primary-foreground: oklch(0.985 0.006 95);
-    --secondary: oklch(0.962 0.024 66);
-    --secondary-foreground: oklch(0.38 0.09 52);
-    --muted: oklch(0.968 0.008 70);
-    --muted-foreground: oklch(0.51 0.02 40);
-    --accent: oklch(0.965 0.045 96);
-    --accent-foreground: oklch(0.36 0.06 78);
-    --destructive: oklch(0.577 0.245 27.325);
-    --destructive-foreground: oklch(0.577 0.245 27.325);
-    --border: oklch(0.916 0.008 60);
-    --input: oklch(0.916 0.008 60);
-    --ring: var(--brand-maroon);
+    --secondary: oklch(0.955 0.01 75);
+    --secondary-foreground: oklch(0.24 0.012 40);
+    --muted: oklch(0.955 0.006 75);
+    --muted-foreground: oklch(0.5 0.012 50);
+    --accent: oklch(0.95 0.008 75);
+    --accent-foreground: oklch(0.17 0.008 40);
+    --destructive: oklch(0.55 0.22 27);
+    --destructive-foreground: oklch(0.5 0.2 27);
+    --border: oklch(0.895 0.007 70);
+    --input: oklch(0.86 0.008 70);
+    /* Focus is our signature: a crisp ochre-gold outline, deep enough for 3:1 on paper. */
+    --focus: oklch(0.64 0.14 72);
+    --ring: var(--focus);
     --chart-1: var(--brand-maroon);
     --chart-2: oklch(0.83 0.172 92);
     --chart-3: var(--brand-orange);
     --chart-4: var(--brand-blue);
     --chart-5: oklch(0.62 0.03 50);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0.006 75);
-    --sidebar-foreground: oklch(0.24 0.012 29);
+    --radius: 0.375rem;
+    --sidebar: oklch(0.972 0.005 78);
+    --sidebar-foreground: oklch(0.2 0.008 40);
     --sidebar-primary: var(--brand-maroon);
     --sidebar-primary-foreground: oklch(0.985 0.006 95);
-    --sidebar-accent: oklch(0.958 0.022 70);
-    --sidebar-accent-foreground: oklch(0.28 0.05 32);
-    --sidebar-border: oklch(0.912 0.01 65);
-    --sidebar-ring: var(--brand-maroon);
+    --sidebar-accent: oklch(0.935 0.008 75);
+    --sidebar-accent-foreground: oklch(0.17 0.008 40);
+    --sidebar-border: oklch(0.895 0.007 70);
+    --sidebar-ring: var(--focus);
 }
 
 .dark {
-    --background: oklch(0.16 0.012 29);
-    --foreground: oklch(0.975 0.006 90);
-    --card: oklch(0.196 0.014 29);
-    --card-foreground: oklch(0.975 0.006 90);
-    --popover: oklch(0.196 0.014 29);
-    --popover-foreground: oklch(0.975 0.006 90);
-    --primary: oklch(0.55 0.16 29);
+    --background: oklch(0.145 0.006 40);
+    --foreground: oklch(0.965 0.005 85);
+    --card: oklch(0.18 0.007 40);
+    --card-foreground: oklch(0.965 0.005 85);
+    --popover: oklch(0.19 0.008 40);
+    --popover-foreground: oklch(0.965 0.005 85);
+    --primary: oklch(0.56 0.17 27);
     --primary-foreground: oklch(0.985 0.006 95);
-    --secondary: oklch(0.29 0.035 55);
-    --secondary-foreground: oklch(0.94 0.03 70);
-    --muted: oklch(0.28 0.02 40);
-    --muted-foreground: oklch(0.72 0.02 60);
-    --accent: oklch(0.31 0.05 85);
-    --accent-foreground: oklch(0.95 0.06 95);
-    --destructive: oklch(0.396 0.141 25.723);
-    --destructive-foreground: oklch(0.637 0.237 25.331);
-    --border: oklch(0.29 0.014 35);
-    --input: oklch(0.29 0.014 35);
-    --ring: oklch(0.62 0.14 29);
+    --secondary: oklch(0.24 0.008 40);
+    --secondary-foreground: oklch(0.94 0.006 85);
+    --muted: oklch(0.23 0.008 40);
+    --muted-foreground: oklch(0.7 0.01 60);
+    --accent: oklch(0.25 0.009 40);
+    --accent-foreground: oklch(0.965 0.005 85);
+    --destructive: oklch(0.5 0.19 25);
+    --destructive-foreground: oklch(0.7 0.18 25);
+    --border: oklch(0.27 0.008 40);
+    --input: oklch(0.32 0.009 40);
+    --focus: var(--brand-gold);
+    --ring: var(--focus);
     --chart-1: oklch(0.62 0.16 29);
     --chart-2: var(--brand-gold);
     --chart-3: var(--brand-orange);
     --chart-4: oklch(0.62 0.19 264);
     --chart-5: oklch(0.7 0.04 60);
-    --sidebar: oklch(0.196 0.016 29);
-    --sidebar-foreground: oklch(0.965 0.006 90);
-    --sidebar-primary: oklch(0.55 0.16 29);
+    --sidebar: oklch(0.165 0.007 40);
+    --sidebar-foreground: oklch(0.955 0.005 85);
+    --sidebar-primary: oklch(0.56 0.17 27);
     --sidebar-primary-foreground: oklch(0.985 0.006 95);
-    --sidebar-accent: oklch(0.28 0.03 50);
-    --sidebar-accent-foreground: oklch(0.96 0.02 80);
-    --sidebar-border: oklch(0.29 0.014 35);
-    --sidebar-ring: oklch(0.62 0.14 29);
+    --sidebar-accent: oklch(0.24 0.009 40);
+    --sidebar-accent-foreground: oklch(0.965 0.005 85);
+    --sidebar-border: oklch(0.27 0.008 40);
+    --sidebar-ring: var(--focus);
+}
+
+/* Sharp offset outline instead of shadcn's blurred ring halo. */
+@utility focus-ring {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+
+    &:focus-visible {
+        outline-color: var(--focus);
+    }
+}
+
+/* Mono, uppercase, wide-tracked micro label borrowed from the landing page. */
+@utility eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    line-height: 1rem;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
 }
 
 @layer base {
@@ -149,5 +177,10 @@
 
     body {
         @apply bg-background text-foreground;
+        font-feature-settings: 'ss01', 'cv11';
+    }
+
+    ::selection {
+        @apply bg-foreground text-background;
     }
 }
