@@ -12,6 +12,7 @@ use App\Models\PurchaseRequest;
 use App\Models\PurchaseRequestItem;
 use App\Models\User;
 use App\Notifications\PurchaseRequestSubmitted;
+use App\Policies\PurchaseRequestPolicy;
 use App\Services\PpmpQuarterlyTracker;
 use App\Services\PurchaseRequestExportService;
 use App\Support\ListQuery;
@@ -37,8 +38,12 @@ class PurchaseRequestController extends Controller
         $query = PurchaseRequest::query()
             ->with(['department:id,name,code', 'requester:id,name']);
 
-        if (! $user->hasAnyRole(['Supply Officer', 'Budget Office', 'Executive Officer', 'BAC Chair', 'BAC Members', 'BAC Secretariat', 'System Admin'])) {
-            $query->where('department_id', $user->department_id);
+        if (! PurchaseRequestPolicy::handlesAllPurchaseRequests($user)) {
+            if ($user->hasRole('Dean')) {
+                $query->where('department_id', $user->department_id);
+            } else {
+                $query->where('requester_id', $user->id);
+            }
         }
 
         $statusOptions = (clone $query)

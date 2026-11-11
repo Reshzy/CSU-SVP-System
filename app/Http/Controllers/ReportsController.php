@@ -8,6 +8,7 @@ use App\Models\PurchaseOrder;
 use App\Models\PurchaseRequest;
 use App\Models\Quotation;
 use App\Models\Supplier;
+use App\Policies\PurchaseRequestPolicy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -106,25 +107,25 @@ class ReportsController extends Controller
         });
     }
 
-    public function analytics(): InertiaResponse
+    public function analytics(Request $request): InertiaResponse
     {
         $labels = collect(range(0, 11))->map(function (int $i): string {
             return now()->startOfMonth()->subMonths(11 - $i)->format('Y-m');
         });
 
-        $counts = $labels->map(function (string $yearMonth): int {
+        $counts = $labels->map(function (string $yearMonth) use ($request): int {
             [$year, $month] = array_map('intval', explode('-', $yearMonth));
 
-            return PurchaseRequest::query()
+            return $this->visiblePurchaseRequests($request)
                 ->whereYear('created_at', $year)
                 ->whereMonth('created_at', $month)
                 ->count();
         });
 
-        $cycle = $labels->map(function (string $yearMonth): ?float {
+        $cycle = $labels->map(function (string $yearMonth) use ($request): ?float {
             [$year, $month] = array_map('intval', explode('-', $yearMonth));
 
-            $rows = PurchaseRequest::query()
+            $rows = $this->visiblePurchaseRequests($request)
                 ->whereYear('completed_at', $year)
                 ->whereMonth('completed_at', $month)
                 ->whereNotNull('submitted_at')
@@ -286,11 +287,28 @@ class ReportsController extends Controller
     }
 
     /**
+     * Limit PRs to those the user may see: handlers see all, others only their own department.
+     *
+     * @return Builder<PurchaseRequest>
+     */
+    private function visiblePurchaseRequests(Request $request): Builder
+    {
+        $user = $request->user();
+        $query = PurchaseRequest::query();
+
+        if ($user !== null && ! PurchaseRequestPolicy::handlesAllPurchaseRequests($user)) {
+            $query->where('department_id', $user->department_id);
+        }
+
+        return $query;
+    }
+
+    /**
      * @return Builder<PurchaseRequest>
      */
     private function purchaseRequestQuery(Request $request): Builder
     {
-        $query = PurchaseRequest::query()->with(['requester:id,name', 'department:id,name']);
+        $query = $this->visiblePurchaseRequests($request)->with(['requester:id,name', 'department:id,name']);
 
         if ($request->filled('status')) {
             $query->where('status', $request->string('status')->value());
