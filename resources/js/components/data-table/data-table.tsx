@@ -224,6 +224,7 @@ export function DataTable<TData extends RowData>({
         enableSortingRemoval: true,
         columnResizeMode: 'onChange',
         manualPagination: isServer,
+        autoResetPageIndex: false,
         manualSorting: isServer,
         manualFiltering: true,
         rowCount: isServer ? (paginated?.total ?? 0) : sourceRows.length,

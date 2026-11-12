@@ -209,3 +209,106 @@ test('the supply queue searches and paginates purchase requests', function () {
         ->assertOk()
         ->assertInertia(fn ($page) => $page->where('purchaseRequests.per_page', 10));
 });
+
+test('the show page only offers status actions valid for the current status', function () {
+    $this->actingAs($this->supplyOfficer)
+        ->get(route('supply.purchase-requests.show', $this->purchaseRequest))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('supply/purchase-requests/show')
+            ->where('allowedActions', ['activate', 'return', 'reject', 'cancel'])
+            ->where('canEditDetails', true)
+        );
+
+    $this->purchaseRequest->update(['status' => 'submitted']);
+
+    $this->actingAs($this->supplyOfficer)
+        ->get(route('supply.purchase-requests.show', $this->purchaseRequest))
+        ->assertInertia(fn ($page) => $page
+            ->where('allowedActions', ['start_review', 'return', 'reject', 'cancel'])
+        );
+});
+
+test('a status action not valid for the current status is rejected', function () {
+    $this->purchaseRequest->update(['status' => 'submitted']);
+
+    $this->actingAs($this->supplyOfficer)
+        ->post(route('supply.purchase-requests.status', $this->purchaseRequest), [
+            'action' => 'activate',
+        ])
+        ->assertSessionHasErrors('action');
+
+    expect($this->purchaseRequest->refresh()->status)->toBe('submitted');
+});
+
+test('supply officer can edit purpose, justification and item specifications but not quantity or cost', function () {
+    $item = $this->purchaseRequest->items()->first();
+
+    $this->actingAs($this->supplyOfficer)
+        ->patch(route('supply.purchase-requests.details.update', $this->purchaseRequest), [
+            'purpose' => 'Updated purpose',
+            'justification' => 'Updated justification',
+            'items' => [
+                [
+                    'id' => $item->id,
+                    'detailed_specifications' => '80gsm, white',
+                    'quantity_requested' => 99,
+                    'estimated_unit_cost' => 9999,
+                ],
+            ],
+            'estimated_total' => 1,
+        ])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    $this->purchaseRequest->refresh();
+    $item->refresh();
+
+    expect($this->purchaseRequest->purpose)->toBe('Updated purpose')
+        ->and($this->purchaseRequest->justification)->toBe('Updated justification')
+        ->and((float) $this->purchaseRequest->estimated_total)->toBe(200.0)
+        ->and($item->detailed_specifications)->toBe('80gsm, white')
+        ->and($item->quantity_requested)->toBe(2)
+        ->and((float) $item->estimated_unit_cost)->toBe(50.0);
+
+    $activity = $this->purchaseRequest->activities()->where('action', 'updated')->first();
+
+    expect($activity)->not->toBeNull()
+        ->and($activity->new_value['purpose'])->toBe('Updated purpose')
+        ->and($activity->new_value['items'][$item->id])->toBe('80gsm, white');
+});
+
+test('supply officer cannot edit specifications of an item from another purchase request', function () {
+    $otherItem = PurchaseRequestItem::factory()->create(['detailed_specifications' => 'Original']);
+
+    $this->actingAs($this->supplyOfficer)
+        ->patch(route('supply.purchase-requests.details.update', $this->purchaseRequest), [
+            'purpose' => 'Updated purpose',
+            'items' => [
+                ['id' => $otherItem->id, 'detailed_specifications' => 'Hijacked'],
+            ],
+        ])
+        ->assertSessionHasErrors('items.0.id');
+
+    expect($otherItem->refresh()->detailed_specifications)->toBe('Original');
+});
+
+test('details cannot be edited once the purchase request has left supply review', function () {
+    $this->purchaseRequest->update(['status' => 'budget_office_review']);
+
+    $this->actingAs($this->supplyOfficer)
+        ->patch(route('supply.purchase-requests.details.update', $this->purchaseRequest), [
+            'purpose' => 'Too late',
+        ])
+        ->assertForbidden();
+});
+
+test('users without supply access cannot edit purchase request details', function () {
+    $this->actingAs($this->requester)
+        ->patch(route('supply.purchase-requests.details.update', $this->purchaseRequest), [
+            'purpose' => 'Sneaky edit',
+        ])
+        ->assertForbidden();
+
+    expect($this->purchaseRequest->refresh()->purpose)->not->toBe('Sneaky edit');
+});

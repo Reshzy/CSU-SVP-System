@@ -1,0 +1,101 @@
+- generic [active] [ref=f1e1]:
+  - generic [ref=f1e2]:
+    - generic [ref=f1e161]:
+      - generic [ref=f1e166]:
+        - list [ref=f1e168]:
+          - listitem [ref=f1e169]:
+            - link "CagSU SVP" [ref=f1e170] [cursor=pointer]:
+              - /url: /dashboard
+        - generic [ref=f1e176]:
+          - generic [ref=f1e177]:
+            - generic [ref=f1e178]: Platform
+            - list [ref=f1e179]:
+              - listitem [ref=f1e180]:
+                - link "Dashboard" [ref=f1e181] [cursor=pointer]:
+                  - /url: /dashboard
+              - listitem [ref=f1e188]:
+                - link "Purchase requests" [ref=f1e189] [cursor=pointer]:
+                  - /url: /purchase-requests
+              - listitem [ref=f1e194]:
+                - link "PPMP" [ref=f1e195] [cursor=pointer]:
+                  - /url: /ppmp
+          - generic [ref=f1e200]:
+            - generic [ref=f1e201]: Supply
+            - list [ref=f1e202]:
+              - listitem [ref=f1e203]:
+                - link "Supply queue" [ref=f1e204] [cursor=pointer]:
+                  - /url: /supply/purchase-requests
+              - listitem [ref=f1e209]:
+                - link "Purchase orders" [ref=f1e210] [cursor=pointer]:
+                  - /url: /supply/purchase-orders
+              - listitem [ref=f1e215]:
+                - link "Inventory receipts" [ref=f1e216] [cursor=pointer]:
+                  - /url: /supply/inventory-receipts
+              - listitem [ref=f1e221]:
+                - link "PO signatories" [ref=f1e222] [cursor=pointer]:
+                  - /url: /supply/po-signatories
+          - generic [ref=f1e227]:
+            - generic [ref=f1e228]: Suppliers
+            - list [ref=f1e229]:
+              - listitem [ref=f1e230]:
+                - link "Suppliers" [ref=f1e231] [cursor=pointer]:
+                  - /url: /supply/suppliers
+          - generic [ref=f1e238]:
+            - generic [ref=f1e239]: Reports
+            - list [ref=f1e240]:
+              - listitem [ref=f1e241]:
+                - link "PR report" [ref=f1e242] [cursor=pointer]:
+                  - /url: /reports/pr
+              - listitem [ref=f1e246]:
+                - link "Analytics" [ref=f1e247] [cursor=pointer]:
+                  - /url: /reports/analytics
+        - list [ref=f1e252]:
+          - listitem [ref=f1e253]:
+            - button "Ronnie S. Agcaoili Ronnie S. Agcaoili" [ref=f1e254]:
+              - img "Ronnie S. Agcaoili" [ref=f1e256]
+              - generic [ref=f1e257]: Ronnie S. Agcaoili
+      - main [ref=f1e262]:
+        - generic [ref=f1e263]:
+          - generic [ref=f1e264]:
+            - button "Toggle sidebar" [ref=f1e265]
+            - navigation "breadcrumb" [ref=f1e267]:
+              - list [ref=f1e268]:
+                - listitem [ref=f1e269]:
+                  - link "Dashboard" [disabled] [ref=f1e270]
+          - button "Change theme" [ref=f1e272] [cursor=pointer]
+        - generic [ref=f1e274]:
+          - generic [ref=f1e275]:
+            - heading "Work queues" [level=2] [ref=f1e276]
+            - paragraph [ref=f1e277]: Signed in as Supply Officer. Open the next step, not a placeholder.
+          - generic [ref=f1e278]:
+            - link [ref=f1e279] [cursor=pointer]:
+              - /url: /purchase-requests
+              - heading "My purchase requests" [level=2] [ref=f1e280]
+              - paragraph [ref=f1e281]: Track status, lots, and the activity timeline.
+            - link [ref=f1e282] [cursor=pointer]:
+              - /url: /supply/purchase-requests
+              - heading "Supply queue" [level=2] [ref=f1e283]
+              - paragraph [ref=f1e284]: Activate, return, or defer incoming purchase requests.
+            - link [ref=f1e285] [cursor=pointer]:
+              - /url: /supply/purchase-orders
+              - heading "Purchase orders" [level=2] [ref=f1e286]
+              - paragraph [ref=f1e287]: Send, acknowledge, deliver, and complete POs.
+            - link [ref=f1e288] [cursor=pointer]:
+              - /url: /supply/suppliers
+              - heading "Suppliers" [level=2] [ref=f1e289]
+              - paragraph [ref=f1e290]: Internal roster. Executive Officer activates pending records.
+            - link [ref=f1e291] [cursor=pointer]:
+              - /url: /reports/pr
+              - heading "Reports" [level=2] [ref=f1e292]
+              - paragraph [ref=f1e293]: CSV exports and 12-month analytics.
+            - link [ref=f1e294] [cursor=pointer]:
+              - /url: /reports/analytics
+              - heading "Analytics" [level=2] [ref=f1e295]
+              - paragraph [ref=f1e296]: PR counts and cycle time for the last year.
+    - region "Notifications alt+T"
+  - generic [ref=f1e298]:
+    - button "Edit this page with Herd" [ref=f1e299] [cursor=pointer]:
+      - generic [ref=f1e300]: Edit with
+      - generic [ref=f1e305]: Herd
+    - button "Show dev stack processes" [ref=f1e306] [cursor=pointer]
+    - button "Hide badge for this session" [ref=f1e309] [cursor=pointer]

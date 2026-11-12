@@ -7,6 +7,7 @@ use App\Models\PurchaseRequestItem;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Font;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -16,6 +17,14 @@ class PurchaseRequestExportService
     private const int FIRST_ITEM_ROW = 11;
 
     private const int LAST_ITEM_ROW = 55;
+
+    private const int SUBTOTAL_ROW = 56;
+
+    private const int TOTAL_ROW = 57;
+
+    private const string CONTINUED_LABEL = 'CONTINUED ON NEXT PAGE';
+
+    private const string TOTAL_LABEL = 'TOTAL';
 
     private const float DESCRIPTION_WIDTH_MARGIN = 1.0;
 
@@ -37,6 +46,7 @@ class PurchaseRequestExportService
 
         $spreadsheet = IOFactory::load($template);
         $templateSheet = $spreadsheet->getActiveSheet();
+        $templateSheet->getStyle('C'.self::LAST_ITEM_ROW)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
         [$regularFont, $boldFont] = $this->descriptionFonts($templateSheet);
         $pages = $this->paginate(
             $this->orderedItems($purchaseRequest),
@@ -72,6 +82,7 @@ class PurchaseRequestExportService
                 $pages[$pageIndex],
                 fn (array $line): bool => $line['showAmounts'],
             ));
+            $this->fillFooter($sheet, $pageIndex + 1, $sheets);
         }
 
         $directory = storage_path('app/temp');
@@ -139,6 +150,42 @@ class PurchaseRequestExportService
 
             $rowNumber++;
         }
+    }
+
+    /**
+     * On multi-page exports, label each page, print its subtotal, and put the
+     * grand total of every page's subtotal on the last page only. A single
+     * page keeps the template footer untouched.
+     *
+     * @param  list<Worksheet>  $sheets
+     */
+    private function fillFooter(Worksheet $sheet, int $pageNumber, array $sheets): void
+    {
+        $pageCount = count($sheets);
+
+        if ($pageCount === 1) {
+            return;
+        }
+
+        $subtotalCell = 'G'.self::SUBTOTAL_ROW;
+
+        $sheet->setCellValue('C'.self::SUBTOTAL_ROW, "Page {$pageNumber} of {$pageCount}");
+        $sheet->setCellValue($subtotalCell, '=SUM(G'.self::FIRST_ITEM_ROW.':G'.self::LAST_ITEM_ROW.')');
+
+        if ($pageNumber < $pageCount) {
+            $sheet->setCellValue('C'.self::TOTAL_ROW, self::CONTINUED_LABEL);
+            $sheet->setCellValue('G'.self::TOTAL_ROW, null);
+
+            return;
+        }
+
+        $subtotals = array_map(
+            fn (Worksheet $page): string => "'".str_replace("'", "''", $page->getTitle())."'!{$subtotalCell}",
+            $sheets,
+        );
+
+        $sheet->setCellValue('C'.self::TOTAL_ROW, self::TOTAL_LABEL);
+        $sheet->setCellValue('G'.self::TOTAL_ROW, '='.implode('+', $subtotals));
     }
 
     private function clearItemRows(Worksheet $sheet): void

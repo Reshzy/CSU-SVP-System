@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Supply;
 use App\Concerns\FlashesToasts;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ListQueryRequest;
+use App\Http\Requests\Supply\UpdatePurchaseRequestDetailsRequest;
 use App\Models\PurchaseRequest;
 use App\Models\PurchaseRequestItem;
 use App\Notifications\PurchaseRequestStatusUpdated;
@@ -23,6 +24,23 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 class PurchaseRequestController extends Controller
 {
     use FlashesToasts;
+
+    /**
+     * Status actions the supply office may take, keyed by the current status.
+     *
+     * @var array<string, list<string>>
+     */
+    private const ALLOWED_STATUS_ACTIONS = [
+        'submitted' => ['start_review', 'return', 'reject', 'cancel'],
+        'supply_office_review' => ['activate', 'return', 'reject', 'cancel'],
+    ];
+
+    /**
+     * Statuses in which the supply office may edit details and manage lots.
+     *
+     * @var list<string>
+     */
+    private const EDITABLE_STATUSES = ['submitted', 'supply_office_review'];
 
     public function index(ListQueryRequest $request): Response
     {
@@ -74,10 +92,14 @@ class PurchaseRequestController extends Controller
             'activities.user:id,name',
         ]);
 
+        $isEditable = in_array($purchaseRequest->status, self::EDITABLE_STATUSES, true);
+
         return Inertia::render('supply/purchase-requests/show', [
             'purchaseRequest' => $purchaseRequest,
             'statusLabel' => $purchaseRequest->statusLabel(),
-            'canManageLots' => in_array($purchaseRequest->status, ['submitted', 'supply_office_review'], true),
+            'allowedActions' => self::ALLOWED_STATUS_ACTIONS[$purchaseRequest->status] ?? [],
+            'canManageLots' => $isEditable,
+            'canEditDetails' => $isEditable,
         ]);
     }
 
@@ -97,6 +119,10 @@ class PurchaseRequestController extends Controller
 
         $action = $validated['action'];
         $previousStatus = $purchaseRequest->status;
+
+        if (! in_array($action, self::ALLOWED_STATUS_ACTIONS[$previousStatus] ?? [], true)) {
+            return back()->withErrors(['action' => 'This action is not available for the current status.']);
+        }
 
         if ($action === 'return' && blank($validated['remarks'] ?? null)) {
             return back()->withErrors(['remarks' => 'Remarks are required when returning a purchase request.']);
@@ -141,6 +167,65 @@ class PurchaseRequestController extends Controller
         $this->toast("Purchase request {$purchaseRequest->pr_number} updated.");
 
         return redirect()->route('supply.purchase-requests.show', $purchaseRequest);
+    }
+
+    public function updateDetails(
+        UpdatePurchaseRequestDetailsRequest $request,
+        PurchaseRequest $purchaseRequest,
+        PurchaseRequestActivityLogger $activityLogger,
+    ): RedirectResponse {
+        $this->ensureEditable($purchaseRequest);
+
+        $validated = $request->validated();
+        $oldValue = [];
+        $newValue = [];
+
+        DB::transaction(function () use ($purchaseRequest, $validated, &$oldValue, &$newValue) {
+            foreach (['purpose', 'justification'] as $field) {
+                $incoming = $validated[$field] ?? null;
+
+                if ($purchaseRequest->{$field} !== $incoming) {
+                    $oldValue[$field] = $purchaseRequest->{$field};
+                    $newValue[$field] = $incoming;
+                    $purchaseRequest->{$field} = $incoming;
+                }
+            }
+
+            $purchaseRequest->save();
+
+            $rows = collect($validated['items'] ?? []);
+            $items = $purchaseRequest->items()
+                ->whereIn('id', $rows->pluck('id'))
+                ->get()
+                ->keyBy('id');
+
+            foreach ($rows as $row) {
+                $item = $items->get($row['id']);
+                $incoming = $row['detailed_specifications'] ?? null;
+
+                if ($item === null || $item->detailed_specifications === $incoming) {
+                    continue;
+                }
+
+                $oldValue['items'][$item->id] = $item->detailed_specifications;
+                $newValue['items'][$item->id] = $incoming;
+                $item->update(['detailed_specifications' => $incoming]);
+            }
+        });
+
+        if ($newValue !== []) {
+            $activityLogger->log(
+                $purchaseRequest,
+                'updated',
+                'Details edited by Supply Office.',
+                oldValue: $oldValue,
+                newValue: $newValue,
+            );
+        }
+
+        $this->toast('Purchase request details updated.');
+
+        return back();
     }
 
     public function storeLot(Request $request, PurchaseRequest $purchaseRequest): RedirectResponse
@@ -277,6 +362,11 @@ class PurchaseRequestController extends Controller
     {
         Gate::authorize('view', $purchaseRequest);
 
-        abort_unless(in_array($purchaseRequest->status, ['submitted', 'supply_office_review'], true), 403);
+        $this->ensureEditable($purchaseRequest);
+    }
+
+    private function ensureEditable(PurchaseRequest $purchaseRequest): void
+    {
+        abort_unless(in_array($purchaseRequest->status, self::EDITABLE_STATUSES, true), 403);
     }
 }

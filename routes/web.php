@@ -72,6 +72,8 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
             ->name('purchase-requests.show');
         Route::post('purchase-requests/{purchaseRequest}/status', [SupplyPurchaseRequestController::class, 'updateStatus'])
             ->name('purchase-requests.status');
+        Route::patch('purchase-requests/{purchaseRequest}/details', [SupplyPurchaseRequestController::class, 'updateDetails'])
+            ->name('purchase-requests.details.update');
         Route::post('purchase-requests/{purchaseRequest}/lots', [SupplyPurchaseRequestController::class, 'storeLot'])
             ->name('purchase-requests.lots.store');
         Route::put('purchase-requests/{purchaseRequest}/lots/{lot}', [SupplyPurchaseRequestController::class, 'updateLot'])

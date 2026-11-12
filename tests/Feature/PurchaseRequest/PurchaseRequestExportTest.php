@@ -8,6 +8,7 @@ use App\Models\User;
 use Database\Seeders\RolePermissionSeeder;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 test('exports each lot item on its own row without unit or cost', function () {
@@ -129,6 +130,10 @@ test('exports each lot item on its own row without unit or cost', function () {
         ->and($sheet->getStyle('C15')->getFont()->getBold())->toBeFalse()
         ->and($sheet->getCell('C16')->getValue())->toBeNull()
         ->and($sheet->getCell('C56')->getValue())->toBeNull()
+        ->and($sheet->getCell('G56')->getValue())->toBeNull()
+        ->and($sheet->getCell('C57')->getValue())->toBe('TOTAL')
+        ->and($sheet->getCell('G57')->getValue())->toBe('=SUM(G11:G56)')
+        ->and($sheet->getStyle('C55')->getAlignment()->getHorizontal())->toBe(Alignment::HORIZONTAL_LEFT)
         ->and($sheet->getStyle('C11')->getAlignment()->getWrapText())->toBeTrue()
         ->and($sheet->getStyle('C12')->getAlignment()->getWrapText())->toBeTrue();
 
@@ -250,7 +255,19 @@ test('moves an item to page 2 when it does not fit the remaining rows', function
         ->and($pageTwo->getCell('G11')->getValue())->toBe('=F11*E11')
         ->and($pageTwo->getCell('E12')->getValue())->toBeNull()
         ->and($pageTwo->getCell('G12')->getValue())->toBeNull()
-        ->and($pageTwo->getCell('C15')->getValue())->toBeNull();
+        ->and($pageTwo->getCell('C15')->getValue())->toBeNull()
+        ->and($pageOne->getStyle('C55')->getAlignment()->getHorizontal())->toBe(Alignment::HORIZONTAL_LEFT)
+        ->and($pageOne->getCell('C56')->getValue())->toBe('Page 1 of 2')
+        ->and($pageOne->getCell('G56')->getValue())->toBe('=SUM(G11:G55)')
+        ->and($pageOne->getCell('C57')->getValue())->toBe('CONTINUED ON NEXT PAGE')
+        ->and($pageOne->getCell('G57')->getValue())->toBeNull()
+        ->and((float) $pageOne->getCell('G56')->getCalculatedValue())->toBe(430.0)
+        ->and($pageTwo->getCell('C56')->getValue())->toBe('Page 2 of 2')
+        ->and($pageTwo->getCell('G56')->getValue())->toBe('=SUM(G11:G55)')
+        ->and($pageTwo->getCell('C57')->getValue())->toBe('TOTAL')
+        ->and($pageTwo->getCell('G57')->getValue())->toBe("='Page 1'!G56+'Page 2'!G56")
+        ->and((float) $pageTwo->getCell('G56')->getCalculatedValue())->toBe(30.0)
+        ->and((float) $pageTwo->getCell('G57')->getCalculatedValue())->toBe(460.0);
 });
 
 test('continues a description taller than one page without repeating the cost', function () {
