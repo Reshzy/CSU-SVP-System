@@ -226,6 +226,25 @@ class PurchaseRequest extends Model
         return $this->belongsTo(self::class, 'replaced_by_pr_id');
     }
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function returnedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'returned_by');
+    }
+
+    /**
+     * Whether the user may submit a replacement for this request after Supply returned it.
+     */
+    public function canBeReplacedBy(?User $user): bool
+    {
+        return $user !== null
+            && $this->status === 'returned_by_supply'
+            && ! $this->is_archived
+            && $this->requester_id === $user->id;
+    }
+
     public static function generateNextPrNumber(?Carbon $at = null): string
     {
         return static::generateNextNumber('PR', 'pr_number', $at);

@@ -62,6 +62,7 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
         Route::get('{purchaseRequest}/replacement/create', [PurchaseRequestReplacementController::class, 'create'])
             ->name('replacement.create');
         Route::post('{purchaseRequest}/replacement', [PurchaseRequestReplacementController::class, 'store'])
+            ->middleware(HandlePrecognitiveRequests::class)
             ->name('replacement.store');
     });
 

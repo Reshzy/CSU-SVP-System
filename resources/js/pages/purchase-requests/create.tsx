@@ -19,7 +19,8 @@ import {
     zodIssuesToFormErrors,
 } from '@/lib/schemas';
 import { index as ppmpIndex } from '@/routes/ppmp';
-import { create, index, store } from '@/routes/purchase-requests';
+import { create, index, show, store } from '@/routes/purchase-requests';
+import { store as replacementStore } from '@/routes/purchase-requests/replacement';
 
 type Props = {
     fiscalYear: number;
@@ -28,6 +29,19 @@ type Props = {
     ppmpId: number | null;
     canUpdatePpmp: boolean;
     availableItems: AvailablePpmpItem[];
+    replacing?: ReplacingPurchaseRequest | null;
+};
+
+type ReplacingPurchaseRequest = {
+    id: number;
+    pr_number: string | null;
+    pr_title: string | null;
+    purpose: string | null;
+    return_remarks: string | null;
+    returned_at: string | null;
+    returned_by_name: string | null;
+    lots: PurchaseRequestCartLot[];
+    lines: PurchaseRequestCartLine[];
 };
 
 export default function PurchaseRequestCreate({
@@ -37,13 +51,21 @@ export default function PurchaseRequestCreate({
     ppmpId,
     canUpdatePpmp,
     availableItems,
+    replacing = null,
 }: Props) {
-    const form = usePrecognitiveForm('post', store.url(), {
-        pr_title: '',
-        purpose: '',
+    const submitUrl = replacing
+        ? replacementStore.url(replacing.id)
+        : store.url();
+    const form = usePrecognitiveForm('post', submitUrl, {
+        pr_title: replacing?.pr_title ?? '',
+        purpose: replacing?.purpose ?? '',
     });
-    const [lines, setLines] = useState<PurchaseRequestCartLine[]>([]);
-    const [lots, setLots] = useState<PurchaseRequestCartLot[]>([]);
+    const [lines, setLines] = useState<PurchaseRequestCartLine[]>(
+        replacing?.lines ?? [],
+    );
+    const [lots, setLots] = useState<PurchaseRequestCartLot[]>(
+        replacing?.lots ?? [],
+    );
 
     const estimatedTotal = useMemo(() => {
         return lines.reduce((sum, line) => {
@@ -61,13 +83,52 @@ export default function PurchaseRequestCreate({
 
     return (
         <>
-            <Head title="New purchase request" />
+            <Head
+                title={
+                    replacing
+                        ? 'Replacement purchase request'
+                        : 'New purchase request'
+                }
+            />
 
             <div className="flex flex-1 flex-col gap-6 p-4">
                 <Heading
-                    title="New purchase request"
-                    description={`FY ${fiscalYear} · Q${quarter}. Submitted requests go straight to Supply Office review.`}
+                    title={
+                        replacing
+                            ? `Replace ${replacing.pr_number ?? 'returned request'}`
+                            : 'New purchase request'
+                    }
+                    description={
+                        replacing
+                            ? `FY ${fiscalYear} · Q${quarter}. The replacement goes to Supply Office review and the returned request is archived.`
+                            : `FY ${fiscalYear} · Q${quarter}. Submitted requests go straight to Supply Office review.`
+                    }
                 />
+
+                {replacing && (
+                    <div
+                        className="space-y-1 rounded-lg border border-amber-500/40 bg-amber-500/5 p-4 text-sm"
+                        data-testid="replacement-return-remarks"
+                    >
+                        <p className="font-medium">
+                            Returned by{' '}
+                            {replacing.returned_by_name ?? 'Supply Office'}
+                            {replacing.returned_at &&
+                                ` on ${new Date(replacing.returned_at).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}`}
+                        </p>
+                        <p className="whitespace-pre-line text-muted-foreground">
+                            {replacing.return_remarks ?? 'No remarks given.'}
+                        </p>
+                        <p>
+                            <Link
+                                href={show.url(replacing.id)}
+                                className="underline"
+                            >
+                                View returned request
+                            </Link>
+                        </p>
+                    </div>
+                )}
 
                 {!hasValidatedPpmp ? (
                     <p className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm">
@@ -103,7 +164,7 @@ export default function PurchaseRequestCreate({
                                 }
 
                                 form.transform(() => payload);
-                                form.post(store.url());
+                                form.post(submitUrl);
                             }}
                             className="grid gap-4 md:grid-cols-2"
                         >
@@ -168,7 +229,9 @@ export default function PurchaseRequestCreate({
                                 }
                                 data-testid="submit-purchase-request"
                             >
-                                Submit to Supply
+                                {replacing
+                                    ? 'Submit replacement'
+                                    : 'Submit to Supply'}
                             </Button>
                         </div>
                     </>

@@ -14,8 +14,15 @@ import {
     DataTable,
 } from '@/components/data-table';
 import InputError from '@/components/input-error';
+import { ChevronRight, Layers } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -124,7 +131,9 @@ const columns = [
     columnHelper.accessor('estimated_unit_cost', {
         header: 'Unit cost',
         cell: ({ getValue }) => (
-            <span className="tabular-nums">{formatMoney(Number(getValue()))}</span>
+            <span className="tabular-nums">
+                {formatMoney(Number(getValue()))}
+            </span>
         ),
     }),
     columnHelper.display({
@@ -145,7 +154,9 @@ function useCatalog(): CatalogContextValue {
     const catalog = useContext(CatalogContext);
 
     if (catalog === null) {
-        throw new Error('Catalog cells must render inside PurchaseRequestItemPicker.');
+        throw new Error(
+            'Catalog cells must render inside PurchaseRequestItemPicker.',
+        );
     }
 
     return catalog;
@@ -185,7 +196,10 @@ function CatalogAddCell({ item }: { item: AvailablePpmpItem }) {
                 size="sm"
                 data-testid="add-ppmp-item"
                 onClick={() =>
-                    catalog.addItem(item, parseQuantity(catalog.addQuantity(item.id)))
+                    catalog.addItem(
+                        item,
+                        parseQuantity(catalog.addQuantity(item.id)),
+                    )
                 }
             >
                 Add
@@ -260,7 +274,9 @@ export function PurchaseRequestItemPicker({
     ppmpId = null,
     canUpdatePpmp = false,
 }: Props) {
-    const [addQuantities, setAddQuantities] = useState<Record<number, string>>({});
+    const [addQuantities, setAddQuantities] = useState<Record<number, string>>(
+        {},
+    );
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
     const [isSelecting, setIsSelecting] = useState(false);
     const standaloneListRef = useRef<HTMLDivElement>(null);
@@ -292,7 +308,11 @@ export function PurchaseRequestItemPicker({
         function applyPaint(id: number, mode: 'select' | 'deselect'): void {
             const drag = paintRef.current;
 
-            if (drag === null || !standaloneIdsRef.current.has(id) || drag.visited.has(id)) {
+            if (
+                drag === null ||
+                !standaloneIdsRef.current.has(id) ||
+                drag.visited.has(id)
+            ) {
                 return;
             }
 
@@ -309,7 +329,12 @@ export function PurchaseRequestItemPicker({
             });
         }
 
-        function idsAlong(x0: number, y0: number, x1: number, y1: number): number[] {
+        function idsAlong(
+            x0: number,
+            y0: number,
+            x1: number,
+            y1: number,
+        ): number[] {
             const distance = Math.hypot(x1 - x0, y1 - y0);
             const steps = Math.max(1, Math.ceil(distance / 8));
             const ids: number[] = [];
@@ -525,7 +550,10 @@ export function PurchaseRequestItemPicker({
                     ...next,
                     {
                         ppmp_item_id: item.id,
-                        quantity_requested: Math.min(item.remaining_qty, increment),
+                        quantity_requested: Math.min(
+                            item.remaining_qty,
+                            increment,
+                        ),
                         lot_id: null,
                         item_name: item.item_name ?? '',
                         estimated_unit_cost: Number(item.estimated_unit_cost),
@@ -549,7 +577,8 @@ export function PurchaseRequestItemPicker({
 
     function setLineUnitCost(ppmpItemId: number, raw: string): void {
         const parsed = Number(raw);
-        const estimatedUnitCost = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+        const estimatedUnitCost =
+            Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 
         onLinesChange(
             lines.map((line) =>
@@ -582,7 +611,9 @@ export function PurchaseRequestItemPicker({
     }
 
     function removeLine(ppmpItemId: number): void {
-        const line = lines.find((candidate) => candidate.ppmp_item_id === ppmpItemId);
+        const line = lines.find(
+            (candidate) => candidate.ppmp_item_id === ppmpItemId,
+        );
         const nextLines = lines.filter(
             (candidate) => candidate.ppmp_item_id !== ppmpItemId,
         );
@@ -666,7 +697,8 @@ export function PurchaseRequestItemPicker({
     }
 
     const selectedStandalone = lines.filter(
-        (line) => line.lot_id === null && selectedIds.includes(line.ppmp_item_id),
+        (line) =>
+            line.lot_id === null && selectedIds.includes(line.ppmp_item_id),
     );
 
     function groupAsLot(): void {
@@ -681,10 +713,7 @@ export function PurchaseRequestItemPicker({
             selectedStandalone.map((line) => line.ppmp_item_id),
         );
 
-        onLotsChange([
-            ...lots,
-            { id: lotId, name: `Lot ${lots.length + 1}` },
-        ]);
+        onLotsChange([...lots, { id: lotId, name: `Lot ${lots.length + 1}` }]);
         onLinesChange(
             lines.map((line) =>
                 selected.has(line.ppmp_item_id) && line.lot_id === null
@@ -728,7 +757,9 @@ export function PurchaseRequestItemPicker({
         <CatalogContext.Provider value={catalog}>
             <div className="space-y-6">
                 <div className="space-y-3">
-                    <h2 className="text-base font-medium">Available PPMP items</h2>
+                    <h2 className="text-base font-medium">
+                        Available PPMP items
+                    </h2>
                     <DataTable
                         tableId="pr-create-catalog"
                         mode="client"
@@ -783,8 +814,8 @@ export function PurchaseRequestItemPicker({
                                         Open the PPMP
                                     </Link>
                                 )}{' '}
-                                to realign them, or bring them into this
-                                quarter here.
+                                to realign them, or bring them into this quarter
+                                here.
                             </p>
                         </div>
                         <DataTable
@@ -804,15 +835,19 @@ export function PurchaseRequestItemPicker({
                 <div className="space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="space-y-1">
-                            <h2 className="text-base font-medium">This request</h2>
+                            <h2 className="text-base font-medium">
+                                This request
+                            </h2>
                             <p className="text-muted-foreground text-sm">
-                                Select 2 or more items, then group them as a lot.
+                                Select 2 or more items, then group them as a
+                                lot.
                             </p>
                         </div>
                         <span
                             className={cn(
                                 'inline-flex',
-                                selectedStandalone.length < 2 && 'cursor-not-allowed',
+                                selectedStandalone.length < 2 &&
+                                    'cursor-not-allowed',
                             )}
                             onClick={() => {
                                 if (selectedStandalone.length < 2) {
@@ -849,54 +884,117 @@ export function PurchaseRequestItemPicker({
                                     return null;
                                 }
 
+                                const lotSubtotal = children.reduce(
+                                    (sum, line) =>
+                                        sum +
+                                        line.quantity_requested *
+                                            Number(line.estimated_unit_cost),
+                                    0,
+                                );
+
                                 return (
-                                    <div
+                                    <Collapsible
                                         key={lot.id}
-                                        className="space-y-2 rounded-lg border p-3"
+                                        defaultOpen
+                                        className="border-primary/40 overflow-hidden rounded-lg border"
+                                        data-testid="cart-lot"
                                     >
-                                        <div className="flex flex-wrap items-end gap-2">
-                                            <div className="min-w-48 flex-1 space-y-1">
-                                                <Label htmlFor={`lot-name-${lot.id}`}>
-                                                    Lot name
-                                                </Label>
-                                                <Input
-                                                    id={`lot-name-${lot.id}`}
-                                                    value={lot.name}
-                                                    onChange={(event) =>
-                                                        renameLot(
-                                                            lot.id,
-                                                            event.target.value,
-                                                        )
-                                                    }
-                                                />
-                                            </div>
+                                        <div className="bg-primary/[0.06] dark:bg-primary/10 flex flex-wrap items-center gap-2 border-b px-3 py-2">
+                                            <CollapsibleTrigger asChild>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="size-8 shrink-0 [&[data-state=open]>svg]:rotate-90"
+                                                    aria-label={`Toggle ${lot.name || 'lot'}`}
+                                                >
+                                                    <ChevronRight className="size-4 transition-transform" />
+                                                </Button>
+                                            </CollapsibleTrigger>
+                                            <Badge className="shrink-0">
+                                                <Layers />
+                                                Lot
+                                            </Badge>
+                                            <Label
+                                                htmlFor={`lot-name-${lot.id}`}
+                                                className="sr-only"
+                                            >
+                                                Lot name
+                                            </Label>
+                                            <Input
+                                                id={`lot-name-${lot.id}`}
+                                                value={lot.name}
+                                                placeholder="Lot name"
+                                                onChange={(event) =>
+                                                    renameLot(
+                                                        lot.id,
+                                                        event.target.value,
+                                                    )
+                                                }
+                                                className="h-8 min-w-40 flex-1 font-medium"
+                                            />
+                                            <span className="text-muted-foreground text-sm whitespace-nowrap tabular-nums">
+                                                {children.length} items ·{' '}
+                                                <span className="text-foreground font-medium">
+                                                    {formatMoney(lotSubtotal)}
+                                                </span>
+                                            </span>
                                             <Button
                                                 type="button"
-                                                variant="outline"
-                                                onClick={() => ungroupLot(lot.id)}
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() =>
+                                                    ungroupLot(lot.id)
+                                                }
                                             >
                                                 Ungroup
                                             </Button>
                                         </div>
-                                        <div className="space-y-2 pl-4">
-                                            {children.map((line) => (
-                                                <CartLineRow
-                                                    key={line.ppmp_item_id}
-                                                    line={line}
-                                                    item={itemsById.get(line.ppmp_item_id)}
-                                                    selectable={false}
-                                                    selected={false}
-                                                    onToggleSelected={() => undefined}
-                                                    onDescriptionChange={setLineDescription}
-                                                    onUnitCostChange={setLineUnitCost}
-                                                    onQuantityChange={setLineQuantity}
-                                                    onRemove={removeLine}
-                                                />
-                                            ))}
-                                        </div>
-                                    </div>
+                                        <CollapsibleContent>
+                                            <div className="border-primary/60 my-2 mr-2 ml-6 divide-y border-l-2">
+                                                {children.map((line) => (
+                                                    <CartLineRow
+                                                        key={line.ppmp_item_id}
+                                                        variant="nested"
+                                                        line={line}
+                                                        item={itemsById.get(
+                                                            line.ppmp_item_id,
+                                                        )}
+                                                        selectable={false}
+                                                        selected={false}
+                                                        onToggleSelected={() =>
+                                                            undefined
+                                                        }
+                                                        onDescriptionChange={
+                                                            setLineDescription
+                                                        }
+                                                        onUnitCostChange={
+                                                            setLineUnitCost
+                                                        }
+                                                        onQuantityChange={
+                                                            setLineQuantity
+                                                        }
+                                                        onRemove={removeLine}
+                                                    />
+                                                ))}
+                                            </div>
+                                        </CollapsibleContent>
+                                    </Collapsible>
                                 );
                             })}
+
+                            {standaloneLines.length > 0 &&
+                            lines.some((line) => line.lot_id !== null) ? (
+                                <div className="flex items-baseline justify-between gap-2 pt-3">
+                                    <h3 className="text-sm font-medium">
+                                        Individual items (
+                                        {standaloneLines.length})
+                                    </h3>
+                                    <p className="text-muted-foreground text-xs">
+                                        Not in a lot
+                                    </p>
+                                </div>
+                            ) : null}
 
                             {standaloneLines.length > 0 ? (
                                 <div
@@ -935,7 +1033,9 @@ export function PurchaseRequestItemPicker({
                                                     event,
                                                 )
                                             }
-                                            onDescriptionChange={setLineDescription}
+                                            onDescriptionChange={
+                                                setLineDescription
+                                            }
                                             onUnitCostChange={setLineUnitCost}
                                             onQuantityChange={setLineQuantity}
                                             onRemove={removeLine}
@@ -956,6 +1056,7 @@ export function PurchaseRequestItemPicker({
 }
 
 function CartLineRow({
+    variant = 'card',
     line,
     item,
     selectable,
@@ -968,6 +1069,7 @@ function CartLineRow({
     onQuantityChange,
     onRemove,
 }: {
+    variant?: 'card' | 'nested';
     line: PurchaseRequestCartLine;
     item: AvailablePpmpItem | undefined;
     selectable: boolean;
@@ -981,7 +1083,8 @@ function CartLineRow({
     onRemove: (ppmpItemId: number) => void;
 }) {
     const remaining = item?.remaining_qty ?? 0;
-    const lineTotal = line.quantity_requested * Number(line.estimated_unit_cost);
+    const lineTotal =
+        line.quantity_requested * Number(line.estimated_unit_cost);
 
     return (
         <div
@@ -1021,9 +1124,12 @@ function CartLineRow({
                     : undefined
             }
             className={cn(
-                'grid items-end gap-3 rounded-lg border p-3 md:grid-cols-[auto_minmax(0,1fr)_5.5rem_5.5rem_7rem_7rem_auto]',
+                'grid items-end gap-3',
+                variant === 'nested'
+                    ? 'px-3 py-3 md:grid-cols-[minmax(0,1fr)_5.5rem_5.5rem_7rem_7rem_auto]'
+                    : 'rounded-lg border p-3 md:grid-cols-[auto_minmax(0,1fr)_5.5rem_5.5rem_7rem_7rem_auto]',
                 selectable && 'cursor-pointer',
-                selected && 'bg-accent ring-2 ring-ring',
+                selected && 'bg-accent ring-ring ring-2',
             )}
         >
             {selectable ? (
@@ -1035,16 +1141,21 @@ function CartLineRow({
                     onClick={(event) => event.stopPropagation()}
                     aria-label={`Select ${line.item_name || item?.item_name || 'item'}`}
                 />
-            ) : (
+            ) : variant === 'card' ? (
                 <span />
-            )}
+            ) : null}
             <div className="min-w-0 space-y-1" data-cart-line-ignore="">
-                <Label htmlFor={`cart-name-${line.ppmp_item_id}`}>Item description</Label>
+                <Label htmlFor={`cart-name-${line.ppmp_item_id}`}>
+                    Item description
+                </Label>
                 <Textarea
                     id={`cart-name-${line.ppmp_item_id}`}
                     value={line.item_name}
                     onChange={(event) =>
-                        onDescriptionChange(line.ppmp_item_id, event.target.value)
+                        onDescriptionChange(
+                            line.ppmp_item_id,
+                            event.target.value,
+                        )
                     }
                     className="min-h-16"
                     data-testid="cart-description"
@@ -1072,7 +1183,9 @@ function CartLineRow({
                 />
             </div>
             <div className="space-y-1" data-cart-line-ignore="">
-                <Label htmlFor={`cart-cost-${line.ppmp_item_id}`}>Unit cost</Label>
+                <Label htmlFor={`cart-cost-${line.ppmp_item_id}`}>
+                    Unit cost
+                </Label>
                 <Input
                     id={`cart-cost-${line.ppmp_item_id}`}
                     type="number"

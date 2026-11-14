@@ -81,6 +81,10 @@ class StorePurchaseRequestRequest extends FormRequest
             }
 
             $items = $this->input('items', []);
+            $replacedPurchaseRequest = $this->route('purchaseRequest');
+            $excludePurchaseRequestId = $replacedPurchaseRequest instanceof PurchaseRequest
+                ? $replacedPurchaseRequest->id
+                : null;
 
             foreach ($items as $index => $item) {
                 if (! empty($item['is_lot'])) {
@@ -115,7 +119,7 @@ class StorePurchaseRequestRequest extends FormRequest
                     continue;
                 }
 
-                $remaining = $ppmpItem->getUsableQuantity($quarter);
+                $remaining = $ppmpItem->getUsableQuantity($quarter, $excludePurchaseRequestId);
 
                 if ($remaining <= 0) {
                     $validator->errors()->add(

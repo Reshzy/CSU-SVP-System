@@ -1,5 +1,5 @@
 import { Head, router, useForm } from '@inertiajs/react';
-import { Download, Layers, Pencil, Search, Unlink, X } from 'lucide-react';
+import { Download, Layers, Package, Pencil, Search, Unlink, X } from 'lucide-react';
 import { Fragment, useState } from 'react';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
@@ -321,6 +321,11 @@ export default function SupplyPurchaseRequestShow({
 
     /* ---------------- Rendering helpers ---------------- */
 
+    /** Left accent bar marking rows that belong to a lot. */
+    const lotHeaderAccent = 'shadow-[inset_3px_0_0_var(--color-primary)]';
+    const lotChildAccent =
+        'shadow-[inset_3px_0_0_color-mix(in_oklab,var(--color-primary)_45%,transparent)]';
+
     const renderItemRow = (item: Item, isChild: boolean) => {
         const selectable = isSelectable(item);
         const specs =
@@ -328,13 +333,20 @@ export default function SupplyPurchaseRequestShow({
                 ? item.detailed_specifications
                 : null;
 
+        const accent = isChild ? lotChildAccent : '';
+        const rowTint = selectedIds.includes(item.id)
+            ? 'bg-primary/[0.04]'
+            : isChild
+              ? 'bg-muted/20'
+              : '';
+
         return (
             <tr
                 key={item.id}
-                className={`border-t align-top ${selectedIds.includes(item.id) ? 'bg-primary/[0.04]' : ''}`}
+                className={`align-top ${isChild ? 'border-t border-dashed' : 'border-t'} ${rowTint}`}
             >
                 {canManageLots && (
-                    <td className="w-10 px-3 py-2.5">
+                    <td className={`w-10 px-3 py-2.5 ${accent}`}>
                         <Checkbox
                             aria-label={`Select ${itemLabel(item)}`}
                             disabled={!selectable}
@@ -343,7 +355,9 @@ export default function SupplyPurchaseRequestShow({
                         />
                     </td>
                 )}
-                <td className="text-muted-foreground w-10 px-3 py-2.5 tabular-nums">
+                <td
+                    className={`text-muted-foreground w-10 px-3 py-2.5 tabular-nums ${canManageLots ? '' : accent}`}
+                >
                     {rowNumbers.get(item.id)}
                 </td>
                 <td className={`px-3 py-2.5 ${isChild ? 'pl-8' : ''}`}>
@@ -598,13 +612,19 @@ export default function SupplyPurchaseRequestShow({
                                     <tbody>
                                         {visibleLots.map(({ lot, children, visibleChildren }) => (
                                             <Fragment key={lot.id}>
-                                                <tr className="bg-muted/40 border-t">
+                                                <tr className="bg-muted/60 border-t-2">
                                                     <td
                                                         colSpan={columnCount - 1}
-                                                        className="px-3 py-2"
+                                                        className={`px-3 py-2 ${lotHeaderAccent}`}
                                                     >
                                                         <div className="flex flex-wrap items-center gap-2">
-                                                            <Layers className="text-muted-foreground size-4" />
+                                                            <Layers className="text-primary size-4" />
+                                                            <Badge
+                                                                variant="outline"
+                                                                className="text-[10px] tracking-wide uppercase"
+                                                            >
+                                                                Lot
+                                                            </Badge>
                                                             <span className="font-medium">
                                                                 {lot.lot_name}
                                                             </span>
@@ -648,6 +668,23 @@ export default function SupplyPurchaseRequestShow({
                                                 )}
                                             </Fragment>
                                         ))}
+                                        {visibleLots.length > 0 &&
+                                            visibleStandalones.length > 0 && (
+                                                <tr className="bg-muted/60 border-t-2">
+                                                    <td colSpan={columnCount} className="px-3 py-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <Package className="text-muted-foreground size-4" />
+                                                            <span className="font-medium">
+                                                                Individual items
+                                                            </span>
+                                                            <span className="text-muted-foreground text-xs">
+                                                                {visibleStandalones.length} items ·
+                                                                not in a lot
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
                                         {visibleStandalones.map((item) =>
                                             renderItemRow(item, false),
                                         )}
