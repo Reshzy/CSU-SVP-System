@@ -1,8 +1,31 @@
-import { Head, router, useForm } from '@inertiajs/react';
-import { ChevronDown, Download, Layers, Package, Pencil, Plus, Search, Unlink, X } from 'lucide-react';
-import { Fragment, useState } from 'react';
+import { Head, useForm } from '@inertiajs/react';
+import {
+    ChevronDown,
+    Download,
+    Layers,
+    Package,
+    Pencil,
+    Plus,
+    Search,
+    Unlink,
+    X,
+} from 'lucide-react';
+import { Fragment, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
+import {
+    LotDndContext,
+    LotDragHandle,
+    LotDropFrame,
+    LotDropHint,
+    LotDropRow,
+    useActiveLotDrag,
+    type LotDragData,
+    type LotDropAction,
+    type LotDropTarget,
+    sourceLotOf,
+} from '@/components/lot-dnd';
 import { PrTimeline, type TimelineActivity } from '@/components/pr-timeline';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -26,12 +49,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { exportMethod, index, status } from '@/routes/supply/purchase-requests';
-import { update as updateDetails } from '@/routes/supply/purchase-requests/details';
-import {
-    destroy as destroyLot,
-    store as storeLot,
-    update as updateLot,
-} from '@/routes/supply/purchase-requests/lots';
+import { usePurchaseRequestEditing } from '@/hooks/use-purchase-request-editing';
 
 type Item = {
     id: number;
@@ -62,7 +80,12 @@ type PurchaseRequest = {
     activities: TimelineActivity[];
 };
 
-type StatusAction = 'start_review' | 'activate' | 'return' | 'reject' | 'cancel';
+type StatusAction =
+    | 'start_review'
+    | 'activate'
+    | 'return'
+    | 'reject'
+    | 'cancel';
 
 type Props = {
     purchaseRequest: PurchaseRequest;
@@ -136,7 +159,9 @@ function formatDate(value: string | null): string {
 }
 
 function itemLabel(item: Item): string {
-    return item.is_lot ? (item.lot_name ?? 'Untitled lot') : `${item.item_name ?? ''}`.trim();
+    return item.is_lot
+        ? (item.lot_name ?? 'Untitled lot')
+        : `${item.item_name ?? ''}`.trim();
 }
 
 function matchesSearch(item: Item, term: string): boolean {
@@ -144,17 +169,73 @@ function matchesSearch(item: Item, term: string): boolean {
         return true;
     }
 
-    return [item.item_code, item.item_name, item.lot_name, item.detailed_specifications]
+    return [
+        item.item_code,
+        item.item_name,
+        item.lot_name,
+        item.detailed_specifications,
+    ]
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(term));
 }
 
-function SummaryField({ label, children }: { label: string; children: React.ReactNode }) {
+function SummaryField({
+    label,
+    children,
+}: {
+    label: string;
+    children: React.ReactNode;
+}) {
     return (
         <div className="min-w-0 space-y-1">
-            <dt className="text-muted-foreground text-xs tracking-wide uppercase">{label}</dt>
+            <dt className="text-muted-foreground text-xs tracking-wide uppercase">
+                {label}
+            </dt>
             <dd className="truncate text-sm font-medium">{children}</dd>
         </div>
+    );
+}
+
+/** Drop areas that only exist while dragging: a new lot, and "individual items" when none are listed. */
+function SupplyDragZones({
+    columnCount,
+    showUngrouped,
+}: {
+    columnCount: number;
+    showUngrouped: boolean;
+}) {
+    const activeDrag = useActiveLotDrag();
+
+    if (activeDrag === null) {
+        return null;
+    }
+
+    return (
+        <tr>
+            <td colSpan={columnCount} className="p-2">
+                <div className="grid gap-2 sm:grid-cols-2">
+                    <LotDropFrame
+                        id="supply-new-lot"
+                        target={{ kind: 'new-lot' }}
+                        className="text-muted-foreground flex min-h-12 items-center justify-center gap-2 rounded-md border border-dashed p-2 text-sm"
+                        data-testid="supply-new-lot-zone"
+                    >
+                        <Layers className="size-4" />
+                        Drop here for a new lot
+                    </LotDropFrame>
+                    {showUngrouped && (
+                        <LotDropFrame
+                            id="supply-ungrouped"
+                            target={{ kind: 'ungrouped' }}
+                            className="text-muted-foreground flex min-h-12 items-center justify-center gap-2 rounded-md border border-dashed p-2 text-sm"
+                        >
+                            <Unlink className="size-4" />
+                            Drop here to take out of its lot
+                        </LotDropFrame>
+                    )}
+                </div>
+            </td>
+        </tr>
     );
 }
 
@@ -168,173 +249,55 @@ export default function SupplyPurchaseRequestShow({
     const lineItems = purchaseRequest.items.filter((item) => !item.is_lot);
     const lots = purchaseRequest.items.filter((item) => item.is_lot);
     const standalones = lineItems.filter((item) => item.parent_lot_id === null);
-    const grandTotal = lineItems.reduce((sum, item) => sum + Number(item.estimated_total_cost), 0);
+    const grandTotal = lineItems.reduce(
+        (sum, item) => sum + Number(item.estimated_total_cost),
+        0,
+    );
 
     const rowNumbers = new Map<number, number>();
 
     [
-        ...lots.flatMap((lot) => lineItems.filter((item) => item.parent_lot_id === lot.id)),
+        ...lots.flatMap((lot) =>
+            lineItems.filter((item) => item.parent_lot_id === lot.id),
+        ),
         ...standalones,
     ].forEach((item, position) => rowNumbers.set(item.id, position + 1));
 
     const [search, setSearch] = useState('');
     const searchTerm = search.trim().toLowerCase();
 
-    /* ---------------- Details editing ---------------- */
-
-    const [editingNarrative, setEditingNarrative] = useState(false);
-    const [editingSpecs, setEditingSpecs] = useState(false);
-
-    const initialDetails = () => ({
-        purpose: purchaseRequest.purpose ?? '',
-        justification: purchaseRequest.justification ?? '',
-        items: lineItems.map((item) => ({
-            id: item.id,
-            detailed_specifications: item.detailed_specifications ?? '',
-        })),
-    });
-
-    const detailsForm = useForm(initialDetails());
-
-    const specFor = (itemId: number): string =>
-        detailsForm.data.items.find((row) => row.id === itemId)?.detailed_specifications ?? '';
-
-    const setSpecFor = (itemId: number, value: string) => {
-        detailsForm.setData(
-            'items',
-            detailsForm.data.items.map((row) =>
-                row.id === itemId ? { ...row, detailed_specifications: value } : row,
-            ),
-        );
-    };
-
-    const cancelDetailsEdit = () => {
-        detailsForm.setData(initialDetails());
-        detailsForm.clearErrors();
-        setEditingNarrative(false);
-        setEditingSpecs(false);
-    };
-
-    const saveDetails = () => {
-        detailsForm.patch(updateDetails.url(purchaseRequest.id), {
-            preserveScroll: true,
-            onSuccess: () => {
-                setEditingNarrative(false);
-                setEditingSpecs(false);
-            },
-        });
-    };
-
-    /* ---------------- Lots ---------------- */
-
-    const [selectedIds, setSelectedIds] = useState<number[]>([]);
-    const [editingLotId, setEditingLotId] = useState<number | null>(null);
-    const [lotPendingRemoval, setLotPendingRemoval] = useState<Item | null>(null);
-    const lotForm = useForm<{ lot_name: string; item_ids: number[] }>({ lot_name: '', item_ids: [] });
-
-    const isSelectable = (item: Item): boolean =>
-        canManageLots &&
-        !editingSpecs &&
-        (item.parent_lot_id === null || item.parent_lot_id === editingLotId);
-
-    const toggleSelected = (itemId: number, checked: boolean) => {
-        setSelectedIds((current) =>
-            checked ? [...current, itemId] : current.filter((id) => id !== itemId),
-        );
-    };
-
-    const clearSelection = () => {
-        setSelectedIds([]);
-        setEditingLotId(null);
-        lotForm.reset();
-        lotForm.clearErrors();
-    };
-
-    const startEditingLot = (lot: Item) => {
-        setEditingLotId(lot.id);
-        lotForm.setData('lot_name', lot.lot_name ?? '');
-        setSelectedIds(
-            lineItems.filter((item) => item.parent_lot_id === lot.id).map((item) => item.id),
-        );
-    };
-
-    const submitLot = () => {
-        const payload = {
-            lot_name: lotForm.data.lot_name,
-            item_ids: selectedIds,
-        };
-        const options = { preserveScroll: true, onSuccess: clearSelection };
-
-        lotForm.transform(() => payload);
-
-        if (editingLotId !== null) {
-            lotForm.put(
-                updateLot.url({
-                    purchaseRequest: purchaseRequest.id,
-                    lot: editingLotId,
-                }),
-                options,
-            );
-
-            return;
-        }
-
-        lotForm.post(storeLot.url(purchaseRequest.id), options);
-    };
-
-    const childIdsOf = (lotId: number): number[] =>
-        lineItems.filter((item) => item.parent_lot_id === lotId).map((item) => item.id);
-
-    /** Replace a lot's members while keeping its name; updateLot recalculates the lot total. */
-    const saveLotMembers = (lot: Item, itemIds: number[]) => {
-        lotForm.transform(() => ({
-            lot_name: lot.lot_name ?? '',
-            item_ids: itemIds,
-        }));
-        lotForm.put(updateLot.url({ purchaseRequest: purchaseRequest.id, lot: lot.id }), {
-            preserveScroll: true,
-            onSuccess: clearSelection,
-        });
-    };
-
-    const addSelectedToLot = (lot: Item) => {
-        saveLotMembers(lot, [...childIdsOf(lot.id), ...selectedIds]);
-    };
-
-    const removeFromLot = (item: Item) => {
-        const lot = lots.find((candidate) => candidate.id === item.parent_lot_id);
-
-        if (!lot) {
-            return;
-        }
-
-        const remainingIds = childIdsOf(lot.id).filter((id) => id !== item.id);
-
-        if (remainingIds.length < 2) {
-            setLotPendingRemoval(lot);
-
-            return;
-        }
-
-        saveLotMembers(lot, remainingIds);
-    };
-
-    const confirmRemoveLot = () => {
-        if (!lotPendingRemoval) {
-            return;
-        }
-
-        router.delete(
-            destroyLot.url({
-                purchaseRequest: purchaseRequest.id,
-                lot: lotPendingRemoval.id,
-            }),
-            {
-                preserveScroll: true,
-                onFinish: () => setLotPendingRemoval(null),
-            },
-        );
-    };
+    const {
+        editingNarrative,
+        setEditingNarrative,
+        editingSpecs,
+        startEditingSpecs,
+        detailsForm,
+        specFor,
+        setSpecFor,
+        cancelDetailsEdit,
+        saveDetails,
+        selectedIds,
+        editingLotId,
+        editingLot,
+        lotPendingRemoval,
+        setLotPendingRemoval,
+        cancelLotRemoval,
+        canDrag,
+        moveIntoLot,
+        takeOutOfLot,
+        startLotWith,
+        lotForm,
+        isSelectable,
+        toggleSelected,
+        clearSelection,
+        childIdsOf,
+        startEditingLot,
+        submitLot,
+        addSelectedToLot,
+        removeFromLot,
+        confirmRemoveLot,
+        showLotBar,
+    } = usePurchaseRequestEditing(purchaseRequest, canManageLots);
 
     /* ---------------- Status ---------------- */
 
@@ -348,9 +311,12 @@ export default function SupplyPurchaseRequestShow({
         rejection_reason: '',
     });
     const [confirmingStatus, setConfirmingStatus] = useState(false);
-    const selectedAction = statusForm.data.action ? actionMeta[statusForm.data.action] : null;
+    const selectedAction = statusForm.data.action
+        ? actionMeta[statusForm.data.action]
+        : null;
     const remarksMissing =
-        selectedAction?.requiresRemarks === true && statusForm.data.remarks.trim() === '';
+        selectedAction?.requiresRemarks === true &&
+        statusForm.data.remarks.trim() === '';
 
     const submitStatus = () => {
         statusForm.transform((data) => ({
@@ -384,78 +350,187 @@ export default function SupplyPurchaseRequestShow({
               ? 'bg-muted/20'
               : '';
 
+        const lot = isChild
+            ? lots.find((candidate) => candidate.id === item.parent_lot_id)
+            : null;
+        const dropTarget: LotDropTarget = lot
+            ? {
+                  kind: 'lot',
+                  lotId: String(lot.id),
+                  label: lot.lot_name ?? 'Untitled lot',
+              }
+            : { kind: 'line', lineId: item.id, label: itemLabel(item) };
+
         return (
-            <tr
+            <LotDropRow
                 key={item.id}
+                id={`row-${item.id}`}
+                target={dropTarget}
+                disabled={!canDrag}
+                draggedItemId={item.id}
                 className={`align-top ${isChild ? 'border-t border-dashed' : 'border-t'} ${rowTint}`}
             >
-                {canManageLots && (
-                    <td className={`w-10 px-3 py-2.5 ${accent}`}>
-                        <Checkbox
-                            aria-label={`Select ${itemLabel(item)}`}
-                            disabled={!selectable}
-                            checked={selectedIds.includes(item.id)}
-                            onCheckedChange={(checked) => toggleSelected(item.id, checked === true)}
-                        />
-                    </td>
-                )}
-                <td
-                    className={`text-muted-foreground w-10 px-3 py-2.5 tabular-nums ${canManageLots ? '' : accent}`}
-                >
-                    {rowNumbers.get(item.id)}
-                </td>
-                <td className={`px-3 py-2.5 ${isChild ? 'pl-8' : ''}`}>
-                    <p className="text-muted-foreground font-mono text-xs">{item.item_code}</p>
-                    <div className="flex items-start justify-between gap-2">
-                        <p>{itemLabel(item)}</p>
-                        {isChild && canManageLots && !editingSpecs && editingLotId === null && (
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-muted-foreground hover:text-destructive -my-1 h-7 shrink-0 px-2 text-xs"
-                                disabled={lotForm.processing}
-                                onClick={() => removeFromLot(item)}
-                            >
-                                <X />
-                                Remove from lot
-                            </Button>
+                {(dropAction) => (
+                    <>
+                        {canManageLots && (
+                            <td className={`w-16 px-2 py-2 ${accent}`}>
+                                <div className="flex items-center gap-1">
+                                    <LotDragHandle
+                                        id={`item-${item.id}`}
+                                        drag={dragFor(item)}
+                                        disabled={!canDrag}
+                                        className="size-7"
+                                        data-testid="supply-drag-handle"
+                                    />
+                                    <Checkbox
+                                        aria-label={`Select ${itemLabel(item)}`}
+                                        disabled={!selectable}
+                                        checked={selectedIds.includes(item.id)}
+                                        onCheckedChange={(checked) =>
+                                            toggleSelected(
+                                                item.id,
+                                                checked === true,
+                                            )
+                                        }
+                                    />
+                                </div>
+                            </td>
                         )}
-                    </div>
-                    {editingSpecs ? (
-                        <Textarea
-                            aria-label={`Specifications for ${itemLabel(item)}`}
-                            className="mt-2 min-h-16 text-sm"
-                            placeholder="Add detailed specifications"
-                            value={specFor(item.id)}
-                            onChange={(event) => setSpecFor(item.id, event.target.value)}
-                        />
-                    ) : (
-                        specs && (
-                            <p className="text-muted-foreground mt-1 text-xs whitespace-pre-wrap">
-                                {specs}
+                        <td
+                            className={`text-muted-foreground w-10 px-3 py-2.5 tabular-nums ${canManageLots ? '' : accent}`}
+                        >
+                            {rowNumbers.get(item.id)}
+                        </td>
+                        <td className={`px-3 py-2.5 ${isChild ? 'pl-8' : ''}`}>
+                            <p className="text-muted-foreground font-mono text-xs">
+                                {item.item_code}
                             </p>
-                        )
-                    )}
-                </td>
-                <td className="px-3 py-2.5 text-right whitespace-nowrap tabular-nums">
-                    {item.quantity_requested}{' '}
-                    <span className="text-muted-foreground">{item.unit_of_measure}</span>
-                </td>
-                <td className="px-3 py-2.5 text-right whitespace-nowrap tabular-nums">
-                    {formatPeso(item.estimated_unit_cost)}
-                </td>
-                <td className="px-3 py-2.5 text-right font-medium whitespace-nowrap tabular-nums">
-                    {formatPeso(item.estimated_total_cost)}
-                </td>
-            </tr>
+                            <div className="flex items-start justify-between gap-2">
+                                <p>{itemLabel(item)}</p>
+                                <LotDropHint
+                                    action={dropAction}
+                                    className="shrink-0"
+                                />
+                                {isChild &&
+                                    canManageLots &&
+                                    !editingSpecs &&
+                                    editingLotId === null && (
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="text-muted-foreground hover:text-destructive -my-1 h-7 shrink-0 px-2 text-xs"
+                                            disabled={lotForm.processing}
+                                            onClick={() => removeFromLot(item)}
+                                        >
+                                            <X />
+                                            Remove from lot
+                                        </Button>
+                                    )}
+                            </div>
+                            {editingSpecs ? (
+                                <Textarea
+                                    aria-label={`Specifications for ${itemLabel(item)}`}
+                                    className="mt-2 min-h-16 text-sm"
+                                    placeholder="Add detailed specifications"
+                                    value={specFor(item.id)}
+                                    onChange={(event) =>
+                                        setSpecFor(item.id, event.target.value)
+                                    }
+                                />
+                            ) : (
+                                specs && (
+                                    <p className="text-muted-foreground mt-1 text-xs whitespace-pre-wrap">
+                                        {specs}
+                                    </p>
+                                )
+                            )}
+                        </td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap tabular-nums">
+                            {item.quantity_requested}{' '}
+                            <span className="text-muted-foreground">
+                                {item.unit_of_measure}
+                            </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap tabular-nums">
+                            {formatPeso(item.estimated_unit_cost)}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-medium whitespace-nowrap tabular-nums">
+                            {formatPeso(item.estimated_total_cost)}
+                        </td>
+                    </>
+                )}
+            </LotDropRow>
+        );
+    };
+
+    /** What a row's drag handle carries: the whole selection when the row is part of it. */
+    const dragFor = (item: Item): LotDragData => {
+        if (
+            item.parent_lot_id === null &&
+            selectedIds.length > 1 &&
+            selectedIds.includes(item.id)
+        ) {
+            return {
+                itemIds: selectedIds,
+                label: `${selectedIds.length} items`,
+                origin: 'ungrouped',
+            };
+        }
+
+        const lot = lots.find(
+            (candidate) => candidate.id === item.parent_lot_id,
+        );
+
+        return {
+            itemIds: [item.id],
+            label: itemLabel(item),
+            origin: lot ? 'lot' : 'ungrouped',
+            sourceLot: lot
+                ? sourceLotOf(
+                      String(lot.id),
+                      lot.lot_name ?? 'Untitled lot',
+                      childIdsOf(lot.id).length,
+                      1,
+                  )
+                : undefined,
+        };
+    };
+
+    const lotNameInputRef = useRef<HTMLInputElement>(null);
+
+    const handleLotDrop = (action: LotDropAction) => {
+        if (action.kind === 'into-lot') {
+            moveIntoLot(action.itemIds, Number(action.lotId));
+
+            return;
+        }
+
+        if (action.kind === 'ungroup') {
+            takeOutOfLot(action.itemIds);
+
+            return;
+        }
+
+        if (action.itemIds.length < 2) {
+            toast('A new lot needs at least 2 items');
+
+            return;
+        }
+
+        startLotWith(action.itemIds, () =>
+            requestAnimationFrame(() => lotNameInputRef.current?.focus()),
         );
     };
 
     const columnCount = canManageLots ? 6 : 5;
-    const visibleStandalones = standalones.filter((item) => matchesSearch(item, searchTerm));
+    const visibleStandalones = standalones.filter((item) =>
+        matchesSearch(item, searchTerm),
+    );
     const visibleLots = lots
         .map((lot) => {
-            const children = lineItems.filter((item) => item.parent_lot_id === lot.id);
+            const children = lineItems.filter(
+                (item) => item.parent_lot_id === lot.id,
+            );
             const visibleChildren = matchesSearch(lot, searchTerm)
                 ? children
                 : children.filter((item) => matchesSearch(item, searchTerm));
@@ -463,9 +538,6 @@ export default function SupplyPurchaseRequestShow({
             return { lot, children, visibleChildren };
         })
         .filter(({ visibleChildren }) => visibleChildren.length > 0);
-
-    const showLotBar = canManageLots && (selectedIds.length > 0 || editingLotId !== null);
-    const editingLot = lots.find((lot) => lot.id === editingLotId);
 
     return (
         <>
@@ -476,7 +548,9 @@ export default function SupplyPurchaseRequestShow({
                     <div className="space-y-2">
                         <Badge
                             variant={
-                                ['cancelled', 'rejected'].includes(purchaseRequest.status)
+                                ['cancelled', 'rejected'].includes(
+                                    purchaseRequest.status,
+                                )
                                     ? 'destructive'
                                     : 'default'
                             }
@@ -484,7 +558,10 @@ export default function SupplyPurchaseRequestShow({
                             {statusLabel}
                         </Badge>
                         <Heading
-                            title={purchaseRequest.pr_number ?? `PR #${purchaseRequest.id}`}
+                            title={
+                                purchaseRequest.pr_number ??
+                                `PR #${purchaseRequest.id}`
+                            }
                             description={purchaseRequest.pr_title ?? undefined}
                         />
                     </div>
@@ -512,9 +589,13 @@ export default function SupplyPurchaseRequestShow({
                     <SummaryField label="Date needed">
                         {formatDate(purchaseRequest.date_needed)}
                     </SummaryField>
-                    <SummaryField label="Line items">{lineItems.length}</SummaryField>
+                    <SummaryField label="Line items">
+                        {lineItems.length}
+                    </SummaryField>
                     <SummaryField label="Estimated total">
-                        <span className="tabular-nums">{formatPeso(grandTotal)}</span>
+                        <span className="tabular-nums">
+                            {formatPeso(grandTotal)}
+                        </span>
                     </SummaryField>
                 </dl>
 
@@ -523,12 +604,16 @@ export default function SupplyPurchaseRequestShow({
                         {/* Purpose & justification */}
                         <section className="space-y-4 rounded-lg border p-4">
                             <div className="flex items-center justify-between gap-2">
-                                <h2 className="font-medium">Purpose &amp; justification</h2>
+                                <h2 className="font-medium">
+                                    Purpose &amp; justification
+                                </h2>
                                 {canEditDetails && !editingNarrative && (
                                     <Button
                                         size="sm"
                                         variant="ghost"
-                                        onClick={() => setEditingNarrative(true)}
+                                        onClick={() =>
+                                            setEditingNarrative(true)
+                                        }
                                     >
                                         <Pencil />
                                         Edit
@@ -544,16 +629,25 @@ export default function SupplyPurchaseRequestShow({
                                             id="purpose"
                                             value={detailsForm.data.purpose}
                                             onChange={(event) =>
-                                                detailsForm.setData('purpose', event.target.value)
+                                                detailsForm.setData(
+                                                    'purpose',
+                                                    event.target.value,
+                                                )
                                             }
                                         />
-                                        <InputError message={detailsForm.errors.purpose} />
+                                        <InputError
+                                            message={detailsForm.errors.purpose}
+                                        />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="justification">Justification</Label>
+                                        <Label htmlFor="justification">
+                                            Justification
+                                        </Label>
                                         <Textarea
                                             id="justification"
-                                            value={detailsForm.data.justification}
+                                            value={
+                                                detailsForm.data.justification
+                                            }
                                             onChange={(event) =>
                                                 detailsForm.setData(
                                                     'justification',
@@ -561,7 +655,11 @@ export default function SupplyPurchaseRequestShow({
                                                 )
                                             }
                                         />
-                                        <InputError message={detailsForm.errors.justification} />
+                                        <InputError
+                                            message={
+                                                detailsForm.errors.justification
+                                            }
+                                        />
                                     </div>
                                     <div className="flex gap-2">
                                         <Button
@@ -595,7 +693,8 @@ export default function SupplyPurchaseRequestShow({
                                             Justification
                                         </p>
                                         <p className="whitespace-pre-wrap">
-                                            {purchaseRequest.justification || '—'}
+                                            {purchaseRequest.justification ||
+                                                '—'}
                                         </p>
                                     </div>
                                 </div>
@@ -612,15 +711,20 @@ export default function SupplyPurchaseRequestShow({
                                         className="pl-9"
                                         placeholder="Search items or specs"
                                         value={search}
-                                        onChange={(event) => setSearch(event.target.value)}
+                                        onChange={(event) =>
+                                            setSearch(event.target.value)
+                                        }
                                     />
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    {canManageLots && !editingSpecs && selectedIds.length === 0 && (
-                                        <p className="text-muted-foreground hidden text-xs md:block">
-                                            Select items to create a lot or add them to an existing one
-                                        </p>
-                                    )}
+                                    {canManageLots &&
+                                        !editingSpecs &&
+                                        selectedIds.length === 0 && (
+                                            <p className="text-muted-foreground hidden text-xs md:block">
+                                                Select items or drag them by the
+                                                grip to group them into lots
+                                            </p>
+                                        )}
                                     {canEditDetails &&
                                         (editingSpecs ? (
                                             <>
@@ -633,7 +737,9 @@ export default function SupplyPurchaseRequestShow({
                                                 </Button>
                                                 <Button
                                                     size="sm"
-                                                    disabled={detailsForm.processing}
+                                                    disabled={
+                                                        detailsForm.processing
+                                                    }
                                                     onClick={saveDetails}
                                                 >
                                                     Save specifications
@@ -643,10 +749,7 @@ export default function SupplyPurchaseRequestShow({
                                             <Button
                                                 size="sm"
                                                 variant="outline"
-                                                onClick={() => {
-                                                    clearSelection();
-                                                    setEditingSpecs(true);
-                                                }}
+                                                onClick={startEditingSpecs}
                                             >
                                                 <Pencil />
                                                 Edit specifications
@@ -655,145 +758,251 @@ export default function SupplyPurchaseRequestShow({
                                 </div>
                             </div>
 
-                            <div className="max-h-[70vh] overflow-auto">
-                                <table className="w-full text-sm">
-                                    <thead className="bg-muted sticky top-0 z-10 text-left">
-                                        <tr>
-                                            {canManageLots && <th className="w-10 px-3 py-2" />}
-                                            <th className="w-10 px-3 py-2">#</th>
-                                            <th className="px-3 py-2">Item</th>
-                                            <th className="px-3 py-2 text-right">Qty</th>
-                                            <th className="px-3 py-2 text-right">Unit cost</th>
-                                            <th className="px-3 py-2 text-right">Total</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {visibleLots.map(({ lot, children, visibleChildren }) => (
-                                            <Fragment key={lot.id}>
-                                                <tr className="bg-muted/60 border-t-2">
-                                                    <td
-                                                        colSpan={columnCount - 1}
-                                                        className={`px-3 py-2 ${lotHeaderAccent}`}
-                                                    >
-                                                        <div className="flex flex-wrap items-center gap-2">
-                                                            <Layers className="text-primary size-4" />
-                                                            <Badge
-                                                                variant="outline"
-                                                                className="text-[10px] tracking-wide uppercase"
-                                                            >
-                                                                Lot
-                                                            </Badge>
-                                                            <span className="font-medium">
-                                                                {lot.lot_name}
-                                                            </span>
-                                                            <span className="text-muted-foreground text-xs">
-                                                                {children.length} items
-                                                            </span>
-                                                            {canManageLots && !editingSpecs && (
-                                                                <span className="ml-auto flex gap-1">
-                                                                    {editingLotId === null &&
-                                                                        selectedIds.length > 0 && (
-                                                                            <Button
-                                                                                size="sm"
-                                                                                variant="outline"
-                                                                                disabled={
-                                                                                    lotForm.processing
-                                                                                }
-                                                                                onClick={() =>
-                                                                                    addSelectedToLot(
-                                                                                        lot,
-                                                                                    )
-                                                                                }
-                                                                            >
-                                                                                <Plus />
-                                                                                Add{' '}
-                                                                                {selectedIds.length}{' '}
-                                                                                selected
-                                                                            </Button>
-                                                                        )}
-                                                                    <Button
-                                                                        size="sm"
-                                                                        variant="ghost"
-                                                                        onClick={() =>
-                                                                            startEditingLot(lot)
-                                                                        }
-                                                                    >
-                                                                        <Pencil />
-                                                                        Edit
-                                                                    </Button>
-                                                                    <Button
-                                                                        size="sm"
-                                                                        variant="ghost"
-                                                                        onClick={() =>
-                                                                            setLotPendingRemoval(
-                                                                                lot,
-                                                                            )
-                                                                        }
-                                                                    >
-                                                                        <Unlink />
-                                                                        Ungroup
-                                                                    </Button>
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-3 py-2 text-right font-medium whitespace-nowrap tabular-nums">
-                                                        {formatPeso(lot.estimated_total_cost)}
-                                                    </td>
-                                                </tr>
-                                                {visibleChildren.map((item) =>
-                                                    renderItemRow(item, true),
+                            <LotDndContext
+                                id="supply-purchase-request-items"
+                                onDrop={handleLotDrop}
+                            >
+                                <div className="max-h-[70vh] overflow-auto">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-muted sticky top-0 z-10 text-left">
+                                            <tr>
+                                                {canManageLots && (
+                                                    <th className="w-10 px-3 py-2" />
                                                 )}
-                                            </Fragment>
-                                        ))}
-                                        {visibleLots.length > 0 &&
-                                            visibleStandalones.length > 0 && (
-                                                <tr className="bg-muted/60 border-t-2">
-                                                    <td colSpan={columnCount} className="px-3 py-2">
-                                                        <div className="flex items-center gap-2">
-                                                            <Package className="text-muted-foreground size-4" />
-                                                            <span className="font-medium">
-                                                                Individual items
-                                                            </span>
-                                                            <span className="text-muted-foreground text-xs">
-                                                                {visibleStandalones.length} items ·
-                                                                not in a lot
-                                                            </span>
-                                                        </div>
-                                                    </td>
-                                                </tr>
+                                                <th className="w-10 px-3 py-2">
+                                                    #
+                                                </th>
+                                                <th className="px-3 py-2">
+                                                    Item
+                                                </th>
+                                                <th className="px-3 py-2 text-right">
+                                                    Qty
+                                                </th>
+                                                <th className="px-3 py-2 text-right">
+                                                    Unit cost
+                                                </th>
+                                                <th className="px-3 py-2 text-right">
+                                                    Total
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <SupplyDragZones
+                                                columnCount={columnCount}
+                                                showUngrouped={
+                                                    visibleStandalones.length ===
+                                                    0
+                                                }
+                                            />
+                                            {visibleLots.map(
+                                                ({
+                                                    lot,
+                                                    children,
+                                                    visibleChildren,
+                                                }) => (
+                                                    <Fragment key={lot.id}>
+                                                        <LotDropRow
+                                                            id={`lot-${lot.id}`}
+                                                            target={{
+                                                                kind: 'lot',
+                                                                lotId: String(
+                                                                    lot.id,
+                                                                ),
+                                                                label:
+                                                                    lot.lot_name ??
+                                                                    'Untitled lot',
+                                                            }}
+                                                            disabled={!canDrag}
+                                                            className="bg-muted/60 border-t-2"
+                                                            data-testid="supply-lot-row"
+                                                            outlineWhenValid
+                                                        >
+                                                            {(dropAction) => (
+                                                                <>
+                                                                    <td
+                                                                        colSpan={
+                                                                            columnCount -
+                                                                            1
+                                                                        }
+                                                                        className={`px-3 py-2 ${lotHeaderAccent}`}
+                                                                    >
+                                                                        <div className="flex flex-wrap items-center gap-2">
+                                                                            <Layers className="text-primary size-4" />
+                                                                            <Badge
+                                                                                variant="outline"
+                                                                                className="text-[10px] tracking-wide uppercase"
+                                                                            >
+                                                                                Lot
+                                                                            </Badge>
+                                                                            <span className="font-medium">
+                                                                                {
+                                                                                    lot.lot_name
+                                                                                }
+                                                                            </span>
+                                                                            <span className="text-muted-foreground text-xs">
+                                                                                {
+                                                                                    children.length
+                                                                                }{' '}
+                                                                                items
+                                                                            </span>
+                                                                            <LotDropHint
+                                                                                action={
+                                                                                    dropAction
+                                                                                }
+                                                                            />
+                                                                            {canManageLots &&
+                                                                                !editingSpecs && (
+                                                                                    <span className="ml-auto flex gap-1">
+                                                                                        {editingLotId ===
+                                                                                            null &&
+                                                                                            selectedIds.length >
+                                                                                                0 && (
+                                                                                                <Button
+                                                                                                    size="sm"
+                                                                                                    variant="outline"
+                                                                                                    disabled={
+                                                                                                        lotForm.processing
+                                                                                                    }
+                                                                                                    onClick={() =>
+                                                                                                        addSelectedToLot(
+                                                                                                            lot,
+                                                                                                        )
+                                                                                                    }
+                                                                                                >
+                                                                                                    <Plus />
+                                                                                                    Add{' '}
+                                                                                                    {
+                                                                                                        selectedIds.length
+                                                                                                    }{' '}
+                                                                                                    selected
+                                                                                                </Button>
+                                                                                            )}
+                                                                                        <Button
+                                                                                            size="sm"
+                                                                                            variant="ghost"
+                                                                                            onClick={() =>
+                                                                                                startEditingLot(
+                                                                                                    lot,
+                                                                                                )
+                                                                                            }
+                                                                                        >
+                                                                                            <Pencil />
+                                                                                            Edit
+                                                                                        </Button>
+                                                                                        <Button
+                                                                                            size="sm"
+                                                                                            variant="ghost"
+                                                                                            onClick={() =>
+                                                                                                setLotPendingRemoval(
+                                                                                                    lot,
+                                                                                                )
+                                                                                            }
+                                                                                        >
+                                                                                            <Unlink />
+                                                                                            Ungroup
+                                                                                        </Button>
+                                                                                    </span>
+                                                                                )}
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-3 py-2 text-right font-medium whitespace-nowrap tabular-nums">
+                                                                        {formatPeso(
+                                                                            lot.estimated_total_cost,
+                                                                        )}
+                                                                    </td>
+                                                                </>
+                                                            )}
+                                                        </LotDropRow>
+                                                        {visibleChildren.map(
+                                                            (item) =>
+                                                                renderItemRow(
+                                                                    item,
+                                                                    true,
+                                                                ),
+                                                        )}
+                                                    </Fragment>
+                                                ),
                                             )}
-                                        {visibleStandalones.map((item) =>
-                                            renderItemRow(item, false),
-                                        )}
-                                        {visibleLots.length === 0 &&
-                                            visibleStandalones.length === 0 && (
-                                                <tr className="border-t">
-                                                    <td
-                                                        colSpan={columnCount}
-                                                        className="text-muted-foreground px-3 py-8 text-center"
+                                            {visibleLots.length > 0 &&
+                                                visibleStandalones.length >
+                                                    0 && (
+                                                    <LotDropRow
+                                                        id="individual-items"
+                                                        target={{
+                                                            kind: 'ungrouped',
+                                                        }}
+                                                        disabled={!canDrag}
+                                                        className="bg-muted/60 border-t-2"
+                                                        data-testid="supply-individual-row"
+                                                        outlineWhenValid
                                                     >
-                                                        No items match “{search}
-                                                        ”.
-                                                    </td>
-                                                </tr>
+                                                        {(dropAction) => (
+                                                            <td
+                                                                colSpan={
+                                                                    columnCount
+                                                                }
+                                                                className="px-3 py-2"
+                                                            >
+                                                                <div className="flex items-center gap-2">
+                                                                    <Package className="text-muted-foreground size-4" />
+                                                                    <span className="font-medium">
+                                                                        Individual
+                                                                        items
+                                                                    </span>
+                                                                    <span className="text-muted-foreground text-xs">
+                                                                        {
+                                                                            visibleStandalones.length
+                                                                        }{' '}
+                                                                        items ·
+                                                                        not in a
+                                                                        lot
+                                                                    </span>
+                                                                    <LotDropHint
+                                                                        action={
+                                                                            dropAction
+                                                                        }
+                                                                    />
+                                                                </div>
+                                                            </td>
+                                                        )}
+                                                    </LotDropRow>
+                                                )}
+                                            {visibleStandalones.map((item) =>
+                                                renderItemRow(item, false),
                                             )}
-                                    </tbody>
-                                    <tfoot className="bg-muted sticky bottom-0">
-                                        <tr className="border-t font-medium">
-                                            <td
-                                                colSpan={columnCount - 1}
-                                                className="px-3 py-2.5 text-right"
-                                            >
-                                                Estimated total
-                                            </td>
-                                            <td className="px-3 py-2.5 text-right whitespace-nowrap tabular-nums">
-                                                {formatPeso(grandTotal)}
-                                            </td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
+                                            {visibleLots.length === 0 &&
+                                                visibleStandalones.length ===
+                                                    0 && (
+                                                    <tr className="border-t">
+                                                        <td
+                                                            colSpan={
+                                                                columnCount
+                                                            }
+                                                            className="text-muted-foreground px-3 py-8 text-center"
+                                                        >
+                                                            No items match “
+                                                            {search}
+                                                            ”.
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                        </tbody>
+                                        <tfoot className="bg-muted sticky bottom-0">
+                                            <tr className="border-t font-medium">
+                                                <td
+                                                    colSpan={columnCount - 1}
+                                                    className="px-3 py-2.5 text-right"
+                                                >
+                                                    Estimated total
+                                                </td>
+                                                <td className="px-3 py-2.5 text-right whitespace-nowrap tabular-nums">
+                                                    {formatPeso(grandTotal)}
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </LotDndContext>
 
                             {showLotBar && (
                                 <div className="bg-card sticky bottom-0 z-20 flex flex-wrap items-end gap-3 rounded-b-lg border-t p-3 shadow-[0_-8px_24px_-12px_rgb(0_0_0/0.35)]">
@@ -804,65 +1013,98 @@ export default function SupplyPurchaseRequestShow({
                                                 : `Group ${selectedIds.length} selected into a lot`}
                                         </Label>
                                         <Input
+                                            ref={lotNameInputRef}
                                             id="lot_name"
                                             placeholder="Lot name, e.g. Office supplies"
                                             value={lotForm.data.lot_name}
                                             onChange={(event) =>
-                                                lotForm.setData('lot_name', event.target.value)
+                                                lotForm.setData(
+                                                    'lot_name',
+                                                    event.target.value,
+                                                )
                                             }
                                         />
                                         <InputError
                                             message={
-                                                lotForm.errors.lot_name ?? lotForm.errors.item_ids
+                                                lotForm.errors.lot_name ??
+                                                lotForm.errors.item_ids
                                             }
                                         />
                                     </div>
                                     <div className="flex gap-2">
-                                        <Button variant="ghost" onClick={clearSelection}>
+                                        <Button
+                                            variant="ghost"
+                                            onClick={clearSelection}
+                                        >
                                             <X />
                                             Clear
                                         </Button>
-                                        {!editingLot && lots.length > 0 && selectedIds.length > 0 && (
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <Button
-                                                        variant="outline"
-                                                        disabled={lotForm.processing}
+                                        {!editingLot &&
+                                            lots.length > 0 &&
+                                            selectedIds.length > 0 && (
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger
+                                                        asChild
                                                     >
-                                                        Add to lot
-                                                        <ChevronDown />
-                                                    </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end" className="w-64">
-                                                    <DropdownMenuLabel>
-                                                        Add {selectedIds.length} selected to
-                                                    </DropdownMenuLabel>
-                                                    {lots.map((lot) => (
-                                                        <DropdownMenuItem
-                                                            key={lot.id}
-                                                            onSelect={() => addSelectedToLot(lot)}
+                                                        <Button
+                                                            variant="outline"
+                                                            disabled={
+                                                                lotForm.processing
+                                                            }
                                                         >
-                                                            <Layers />
-                                                            <span className="truncate">
-                                                                {lot.lot_name}
-                                                            </span>
-                                                            <span className="text-muted-foreground ml-auto text-xs">
-                                                                {childIdsOf(lot.id).length} items
-                                                            </span>
-                                                        </DropdownMenuItem>
-                                                    ))}
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        )}
+                                                            Add to lot
+                                                            <ChevronDown />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent
+                                                        align="end"
+                                                        className="w-64"
+                                                    >
+                                                        <DropdownMenuLabel>
+                                                            Add{' '}
+                                                            {selectedIds.length}{' '}
+                                                            selected to
+                                                        </DropdownMenuLabel>
+                                                        {lots.map((lot) => (
+                                                            <DropdownMenuItem
+                                                                key={lot.id}
+                                                                onSelect={() =>
+                                                                    addSelectedToLot(
+                                                                        lot,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <Layers />
+                                                                <span className="truncate">
+                                                                    {
+                                                                        lot.lot_name
+                                                                    }
+                                                                </span>
+                                                                <span className="text-muted-foreground ml-auto text-xs">
+                                                                    {
+                                                                        childIdsOf(
+                                                                            lot.id,
+                                                                        ).length
+                                                                    }{' '}
+                                                                    items
+                                                                </span>
+                                                            </DropdownMenuItem>
+                                                        ))}
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            )}
                                         <Button
                                             disabled={
                                                 lotForm.processing ||
                                                 selectedIds.length < 2 ||
-                                                lotForm.data.lot_name.trim() === ''
+                                                lotForm.data.lot_name.trim() ===
+                                                    ''
                                             }
                                             onClick={submitLot}
                                         >
-                                            {editingLot ? 'Save lot' : 'Create lot'}
+                                            {editingLot
+                                                ? 'Save lot'
+                                                : 'Create lot'}
                                         </Button>
                                     </div>
                                 </div>
@@ -876,8 +1118,8 @@ export default function SupplyPurchaseRequestShow({
                             <h2 className="font-medium">Supply action</h2>
                             {allowedActions.length === 0 ? (
                                 <p className="text-muted-foreground text-sm">
-                                    No supply actions are available while this request is{' '}
-                                    {statusLabel.toLowerCase()}.
+                                    No supply actions are available while this
+                                    request is {statusLabel.toLowerCase()}.
                                 </p>
                             ) : (
                                 <form
@@ -901,7 +1143,9 @@ export default function SupplyPurchaseRequestShow({
                                     >
                                         {allowedActions.map((action) => {
                                             const meta = actionMeta[action];
-                                            const isSelected = statusForm.data.action === action;
+                                            const isSelected =
+                                                statusForm.data.action ===
+                                                action;
 
                                             return (
                                                 <button
@@ -910,7 +1154,10 @@ export default function SupplyPurchaseRequestShow({
                                                     role="radio"
                                                     aria-checked={isSelected}
                                                     onClick={() =>
-                                                        statusForm.setData('action', action)
+                                                        statusForm.setData(
+                                                            'action',
+                                                            action,
+                                                        )
                                                     }
                                                     className={`w-full rounded-md border px-3 py-2 text-left transition-colors ${
                                                         isSelected
@@ -930,30 +1177,44 @@ export default function SupplyPurchaseRequestShow({
                                             );
                                         })}
                                     </div>
-                                    <InputError message={statusForm.errors.action} />
+                                    <InputError
+                                        message={statusForm.errors.action}
+                                    />
 
                                     <div className="space-y-2">
                                         <Label htmlFor="remarks">
                                             Remarks
-                                            {selectedAction?.requiresRemarks ? '' : ' (optional)'}
+                                            {selectedAction?.requiresRemarks
+                                                ? ''
+                                                : ' (optional)'}
                                         </Label>
                                         <Textarea
                                             id="remarks"
                                             value={statusForm.data.remarks}
                                             onChange={(event) =>
-                                                statusForm.setData('remarks', event.target.value)
+                                                statusForm.setData(
+                                                    'remarks',
+                                                    event.target.value,
+                                                )
                                             }
                                         />
-                                        <InputError message={statusForm.errors.remarks} />
+                                        <InputError
+                                            message={statusForm.errors.remarks}
+                                        />
                                     </div>
 
                                     <Button
                                         type="submit"
                                         className="w-full"
                                         variant={
-                                            selectedAction?.destructive ? 'destructive' : 'default'
+                                            selectedAction?.destructive
+                                                ? 'destructive'
+                                                : 'default'
                                         }
-                                        disabled={statusForm.processing || remarksMissing}
+                                        disabled={
+                                            statusForm.processing ||
+                                            remarksMissing
+                                        }
                                     >
                                         {selectedAction?.label ?? 'Apply'}
                                     </Button>
@@ -962,8 +1223,12 @@ export default function SupplyPurchaseRequestShow({
                         </section>
 
                         <section className="space-y-3">
-                            <h2 className="text-base font-medium">Activity timeline</h2>
-                            <PrTimeline activities={purchaseRequest.activities ?? []} />
+                            <h2 className="text-base font-medium">
+                                Activity timeline
+                            </h2>
+                            <PrTimeline
+                                activities={purchaseRequest.activities ?? []}
+                            />
                         </section>
                     </aside>
                 </div>
@@ -974,11 +1239,15 @@ export default function SupplyPurchaseRequestShow({
                     <DialogHeader>
                         <DialogTitle>{selectedAction?.label}?</DialogTitle>
                         <DialogDescription>
-                            {selectedAction?.hint} The requester will be notified.
+                            {selectedAction?.hint} The requester will be
+                            notified.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
-                        <Button variant="ghost" onClick={() => setConfirmingStatus(false)}>
+                        <Button
+                            variant="ghost"
+                            onClick={() => setConfirmingStatus(false)}
+                        >
                             Go back
                         </Button>
                         <Button
@@ -994,21 +1263,26 @@ export default function SupplyPurchaseRequestShow({
 
             <Dialog
                 open={lotPendingRemoval !== null}
-                onOpenChange={(open) => !open && setLotPendingRemoval(null)}
+                onOpenChange={(open) => !open && cancelLotRemoval()}
             >
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Ungroup “{lotPendingRemoval?.lot_name}”?</DialogTitle>
+                        <DialogTitle>
+                            Ungroup “{lotPendingRemoval?.lot_name}”?
+                        </DialogTitle>
                         <DialogDescription>
-                            The lot is removed and its items become standalone again. No items are
-                            deleted.
+                            The lot is removed and its items become standalone
+                            again. No items are deleted.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
-                        <Button variant="ghost" onClick={() => setLotPendingRemoval(null)}>
+                        <Button variant="ghost" onClick={cancelLotRemoval}>
                             Keep lot
                         </Button>
-                        <Button variant="destructive" onClick={confirmRemoveLot}>
+                        <Button
+                            variant="destructive"
+                            onClick={confirmRemoveLot}
+                        >
                             Ungroup
                         </Button>
                     </DialogFooter>

@@ -15,6 +15,18 @@ import {
 } from '@/components/data-table';
 import InputError from '@/components/input-error';
 import {
+    LotDndContext,
+    LotDragHandle,
+    LotDropFrame,
+    LotDropHint,
+    lotDropZoneClass,
+    useActiveLotDrag,
+    sourceLotOf,
+    useLotDropZone,
+    type LotDragData,
+    type LotDropAction,
+} from '@/components/lot-dnd';
+import {
     ChevronDown,
     ChevronRight,
     CornerUpLeft,
@@ -125,14 +137,26 @@ const columns = [
         header: 'Item',
         fill: true,
         cell: ({ row }) => (
-            <>
-                <span className="font-medium">
-                    {row.original.item_name ?? 'Untitled item'}
-                </span>
-                <span className="text-muted-foreground block font-mono text-xs">
-                    {row.original.item_code} · {row.original.item_category}
-                </span>
-            </>
+            <div className="flex items-start gap-1.5">
+                <LotDragHandle
+                    id={`catalog-${row.original.id}`}
+                    drag={{
+                        itemIds: [row.original.id],
+                        label: row.original.item_name ?? 'Untitled item',
+                        origin: 'catalog',
+                    }}
+                    className="-ml-1 size-7"
+                    data-testid="catalog-drag-handle"
+                />
+                <div className="min-w-0">
+                    <span className="font-medium">
+                        {row.original.item_name ?? 'Untitled item'}
+                    </span>
+                    <span className="text-muted-foreground block font-mono text-xs">
+                        {row.original.item_code} · {row.original.item_category}
+                    </span>
+                </div>
+            </div>
         ),
     }),
     columnHelper.accessor('unit_of_measure', {
@@ -637,6 +661,7 @@ export function PurchaseRequestItemPicker({
     function commitLines(
         nextLines: PurchaseRequestCartLine[],
         affectedLotIds: (string | null)[],
+        nextLots: PurchaseRequestCartLot[] = lots,
     ): void {
         const dissolved = new Set<string>();
 
@@ -652,6 +677,10 @@ export function PurchaseRequestItemPicker({
         if (dissolved.size === 0) {
             onLinesChange(nextLines);
 
+            if (nextLots !== lots) {
+                onLotsChange(nextLots);
+            }
+
             return;
         }
 
@@ -662,20 +691,22 @@ export function PurchaseRequestItemPicker({
                     : line,
             ),
         );
-        onLotsChange(lots.filter((lot) => !dissolved.has(lot.id)));
+        onLotsChange(nextLots.filter((lot) => !dissolved.has(lot.id)));
 
-        const names = lots
+        const names = nextLots
             .filter((lot) => dissolved.has(lot.id))
             .map((lot) => lot.name || 'Lot');
 
-        toast(
-            `${names.join(', ')} had fewer than 2 items and was ungrouped`,
-        );
+        toast(`${names.join(', ')} had fewer than 2 items and was ungrouped`);
     }
 
-    function moveLinesToLot(ppmpItemIds: number[], lotId: string | null): void {
+    function moveLinesToLot(
+        ppmpItemIds: number[],
+        lotId: string | null,
+        baseLines: PurchaseRequestCartLine[] = lines,
+    ): void {
         const moving = new Set(ppmpItemIds);
-        const sourceLotIds = lines
+        const sourceLotIds = baseLines
             .filter(
                 (line) =>
                     moving.has(line.ppmp_item_id) && line.lot_id !== lotId,
@@ -683,12 +714,79 @@ export function PurchaseRequestItemPicker({
             .map((line) => line.lot_id);
 
         commitLines(
-            lines.map((line) =>
-                moving.has(line.ppmp_item_id) ? { ...line, lot_id: lotId } : line,
+            baseLines.map((line) =>
+                moving.has(line.ppmp_item_id)
+                    ? { ...line, lot_id: lotId }
+                    : line,
             ),
             sourceLotIds,
         );
         setSelectedIds((current) => current.filter((id) => !moving.has(id)));
+    }
+
+    /** Group the given lines into a new lot, pulling them out of any lot they were in. */
+    function createLot(
+        ppmpItemIds: number[],
+        baseLines: PurchaseRequestCartLine[] = lines,
+    ): void {
+        const moving = new Set(ppmpItemIds);
+
+        if (moving.size < 2) {
+            toast('A new lot needs at least 2 items');
+
+            return;
+        }
+
+        const lotId = nextLotId();
+        const sourceLotIds = baseLines
+            .filter((line) => moving.has(line.ppmp_item_id))
+            .map((line) => line.lot_id);
+
+        commitLines(
+            baseLines.map((line) =>
+                moving.has(line.ppmp_item_id)
+                    ? { ...line, lot_id: lotId }
+                    : line,
+            ),
+            sourceLotIds,
+            [...lots, { id: lotId, name: `Lot ${lots.length + 1}` }],
+        );
+        setSelectedIds((current) => current.filter((id) => !moving.has(id)));
+    }
+
+    /**
+     * Apply a drag-and-drop result. Items dragged straight from the PPMP
+     * catalog are added to the request first, using their "add" quantity.
+     */
+    function handleLotDrop(action: LotDropAction): void {
+        const missing = action.itemIds
+            .filter((id) => !cartQuantityById.has(id))
+            .map((id) => itemsById.get(id))
+            .filter(
+                (item): item is AvailablePpmpItem =>
+                    item !== undefined && item.remaining_qty > 0,
+            );
+        const baseLines = [
+            ...lines,
+            ...missing.map((item) => ({
+                ppmp_item_id: item.id,
+                quantity_requested: Math.min(
+                    item.remaining_qty,
+                    parseQuantity(addQuantities[item.id] ?? '1'),
+                ),
+                lot_id: null,
+                item_name: item.item_name ?? '',
+                estimated_unit_cost: Number(item.estimated_unit_cost),
+            })),
+        ];
+
+        if (action.kind === 'into-lot') {
+            moveLinesToLot(action.itemIds, action.lotId, baseLines);
+        } else if (action.kind === 'ungroup') {
+            moveLinesToLot(action.itemIds, null, baseLines);
+        } else {
+            createLot(action.itemIds, baseLines);
+        }
     }
 
     function removeLine(ppmpItemId: number): void {
@@ -767,20 +865,44 @@ export function PurchaseRequestItemPicker({
             return;
         }
 
-        const lotId = nextLotId();
-        const selected = new Set(
-            selectedStandalone.map((line) => line.ppmp_item_id),
-        );
-
-        onLotsChange([...lots, { id: lotId, name: `Lot ${lots.length + 1}` }]);
-        onLinesChange(
-            lines.map((line) =>
-                selected.has(line.ppmp_item_id) && line.lot_id === null
-                    ? { ...line, lot_id: lotId }
-                    : line,
-            ),
-        );
+        createLot(selectedStandalone.map((line) => line.ppmp_item_id));
         setSelectedIds([]);
+    }
+
+    /** What a cart row's drag handle carries: the whole selection when the row is part of it. */
+    function dragFor(line: PurchaseRequestCartLine): LotDragData {
+        const label = line.item_name || 'Untitled item';
+
+        if (
+            line.lot_id === null &&
+            selectedStandalone.length > 1 &&
+            selectedIds.includes(line.ppmp_item_id)
+        ) {
+            return {
+                itemIds: selectedStandalone.map(
+                    (selected) => selected.ppmp_item_id,
+                ),
+                label: `${selectedStandalone.length} items`,
+                origin: 'ungrouped',
+            };
+        }
+
+        const lotOption = lotOptions.find((lot) => lot.id === line.lot_id);
+
+        return {
+            itemIds: [line.ppmp_item_id],
+            label,
+            origin: lotOption ? 'lot' : 'ungrouped',
+            sourceLot: lotOption
+                ? sourceLotOf(
+                      lotOption.id,
+                      lotOption.name,
+                      lines.filter((other) => other.lot_id === lotOption.id)
+                          .length,
+                      1,
+                  )
+                : undefined,
+        };
     }
 
     function addSelectedToLot(lotId: string): void {
@@ -834,356 +956,416 @@ export function PurchaseRequestItemPicker({
 
     return (
         <CatalogContext.Provider value={catalog}>
-            <div className="space-y-6">
-                <Card>
-                    <CardHeader>
-                        <StepHeading
-                            step={2}
-                            title="Add items from your PPMP"
-                            description="Set a quantity and press Add, or tick several rows and use “Add to request”."
-                        />
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <DataTable
-                            tableId="pr-create-catalog"
-                            mode="client"
-                            data={catalogItems}
-                            columns={columns}
-                            searchPlaceholder="Item name or code"
-                            filterDefs={
-                                categories.length > 0
-                                    ? [
-                                          {
-                                              id: 'item_category',
-                                              label: 'Category',
-                                              options: categories,
-                                          },
-                                      ]
-                                    : []
-                            }
-                            bulkActions={[
-                                {
-                                    label: 'Add to request',
-                                    onAction: (rows) => addItems(rows, 1),
-                                },
-                            ]}
-                            getRowId={(row) => String(row.id)}
-                            initialPinning={{ start: ['item_name'] }}
-                            emptyMessage="No PPMP items have remaining quantity you can request now, including unused earlier quarters."
-                            noResultsMessage="No items match the current filters."
-                        />
+            <LotDndContext id="purchase-request-items" onDrop={handleLotDrop}>
+                <div className="space-y-6">
+                    <Card>
+                        <CardHeader>
+                            <StepHeading
+                                step={2}
+                                title="Add items from your PPMP"
+                                description="Set a quantity and press Add, or tick several rows and use “Add to request”."
+                            />
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <DataTable
+                                tableId="pr-create-catalog"
+                                mode="client"
+                                data={catalogItems}
+                                columns={columns}
+                                searchPlaceholder="Item name or code"
+                                filterDefs={
+                                    categories.length > 0
+                                        ? [
+                                              {
+                                                  id: 'item_category',
+                                                  label: 'Category',
+                                                  options: categories,
+                                              },
+                                          ]
+                                        : []
+                                }
+                                bulkActions={[
+                                    {
+                                        label: 'Add to request',
+                                        onAction: (rows) => addItems(rows, 1),
+                                    },
+                                ]}
+                                getRowId={(row) => String(row.id)}
+                                initialPinning={{ start: ['item_name'] }}
+                                emptyMessage="No PPMP items have remaining quantity you can request now, including unused earlier quarters."
+                                noResultsMessage="No items match the current filters."
+                            />
 
-                        {laterItems.length > 0 ? (
-                            <Collapsible className="rounded-lg border">
-                                <CollapsibleTrigger asChild>
-                                    <button
-                                        type="button"
-                                        className="hover:bg-muted/50 flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm [&[data-state=open]>svg]:rotate-90"
-                                    >
-                                        <ChevronRight className="text-muted-foreground size-4 shrink-0 transition-transform" />
-                                        <span className="font-medium">
-                                            Planned for later this year
-                                        </span>
-                                        <Badge variant="secondary">
-                                            {laterItems.length}
-                                        </Badge>
-                                        <span className="text-muted-foreground ml-auto hidden text-xs sm:inline">
-                                            Only available in later quarters
-                                        </span>
-                                    </button>
-                                </CollapsibleTrigger>
-                                <CollapsibleContent className="space-y-3 border-t p-3">
-                                    <p className="text-muted-foreground text-sm">
-                                        These items have quantity only in later
-                                        quarters.{' '}
-                                        <Link
-                                            href={
-                                                ppmpId !== null
-                                                    ? ppmpSummary(ppmpId)
-                                                    : ppmpIndex.url()
-                                            }
-                                            className="underline"
+                            {laterItems.length > 0 ? (
+                                <Collapsible className="rounded-lg border">
+                                    <CollapsibleTrigger asChild>
+                                        <button
+                                            type="button"
+                                            className="hover:bg-muted/50 flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm [&[data-state=open]>svg]:rotate-90"
                                         >
-                                            Open the PPMP
-                                        </Link>{' '}
-                                        to realign them, or bring them into this
-                                        quarter here.
+                                            <ChevronRight className="text-muted-foreground size-4 shrink-0 transition-transform" />
+                                            <span className="font-medium">
+                                                Planned for later this year
+                                            </span>
+                                            <Badge variant="secondary">
+                                                {laterItems.length}
+                                            </Badge>
+                                            <span className="text-muted-foreground ml-auto hidden text-xs sm:inline">
+                                                Only available in later quarters
+                                            </span>
+                                        </button>
+                                    </CollapsibleTrigger>
+                                    <CollapsibleContent className="space-y-3 border-t p-3">
+                                        <p className="text-muted-foreground text-sm">
+                                            These items have quantity only in
+                                            later quarters.{' '}
+                                            <Link
+                                                href={
+                                                    ppmpId !== null
+                                                        ? ppmpSummary(ppmpId)
+                                                        : ppmpIndex.url()
+                                                }
+                                                className="underline"
+                                            >
+                                                Open the PPMP
+                                            </Link>{' '}
+                                            to realign them, or bring them into
+                                            this quarter here.
+                                        </p>
+                                        <DataTable
+                                            tableId="pr-create-later"
+                                            mode="client"
+                                            data={laterItems}
+                                            columns={laterColumns}
+                                            searchPlaceholder="Item name or code"
+                                            getRowId={(row) => String(row.id)}
+                                            initialPinning={{
+                                                start: ['item_name'],
+                                            }}
+                                            emptyMessage="No later-quarter items."
+                                            noResultsMessage="No items match the current filters."
+                                        />
+                                    </CollapsibleContent>
+                                </Collapsible>
+                            ) : null}
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <StepHeading
+                                step={3}
+                                title="This request"
+                                description={
+                                    lines.length === 0
+                                        ? 'Items you add appear here.'
+                                        : `${lines.length} ${lines.length === 1 ? 'item' : 'items'}${activeLots.length > 0 ? ` · ${activeLots.length} ${activeLots.length === 1 ? 'lot' : 'lots'}` : ''}`
+                                }
+                            />
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            {lines.length === 0 ? (
+                                <LotDropFrame
+                                    id="cart-empty"
+                                    target={{ kind: 'ungrouped' }}
+                                    className="text-muted-foreground flex flex-col items-center gap-2 rounded-lg border border-dashed p-8 text-center text-sm"
+                                >
+                                    <PackagePlus className="size-6" />
+                                    <p>
+                                        Search the PPMP above and add items to
+                                        this request, or drag them here by their
+                                        grip.
                                     </p>
-                                    <DataTable
-                                        tableId="pr-create-later"
-                                        mode="client"
-                                        data={laterItems}
-                                        columns={laterColumns}
-                                        searchPlaceholder="Item name or code"
-                                        getRowId={(row) => String(row.id)}
-                                        initialPinning={{ start: ['item_name'] }}
-                                        emptyMessage="No later-quarter items."
-                                        noResultsMessage="No items match the current filters."
+                                </LotDropFrame>
+                            ) : (
+                                <>
+                                    <SelectionToolbar
+                                        selectedCount={
+                                            selectedStandalone.length
+                                        }
+                                        standaloneCount={standaloneLines.length}
+                                        lotOptions={lotOptions}
+                                        onNewLot={groupAsLot}
+                                        onAddToLot={addSelectedToLot}
+                                        onClear={() => setSelectedIds([])}
                                     />
-                                </CollapsibleContent>
-                            </Collapsible>
-                        ) : null}
-                    </CardContent>
-                </Card>
 
-                <Card>
-                    <CardHeader>
-                        <StepHeading
-                            step={3}
-                            title="This request"
-                            description={
-                                lines.length === 0
-                                    ? 'Items you add appear here.'
-                                    : `${lines.length} ${lines.length === 1 ? 'item' : 'items'}${activeLots.length > 0 ? ` · ${activeLots.length} ${activeLots.length === 1 ? 'lot' : 'lots'}` : ''}`
-                            }
-                        />
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        {lines.length === 0 ? (
-                            <div className="text-muted-foreground flex flex-col items-center gap-2 rounded-lg border border-dashed p-8 text-center text-sm">
-                                <PackagePlus className="size-6" />
-                                <p>
-                                    Search the PPMP above and add items to this
-                                    request.
-                                </p>
-                            </div>
-                        ) : (
-                            <>
-                                <SelectionToolbar
-                                    selectedCount={selectedStandalone.length}
-                                    standaloneCount={standaloneLines.length}
-                                    lotOptions={lotOptions}
-                                    onNewLot={groupAsLot}
-                                    onAddToLot={addSelectedToLot}
-                                    onClear={() => setSelectedIds([])}
-                                />
+                                    <CartDragZones
+                                        showUngrouped={
+                                            standaloneLines.length === 0
+                                        }
+                                    />
 
-                                {activeLots.map((lot) => {
-                                    const children = lines.filter(
-                                        (line) => line.lot_id === lot.id,
-                                    );
-                                    const lotSubtotal = children.reduce(
-                                        (sum, line) =>
-                                            sum +
-                                            line.quantity_requested *
-                                                Number(
-                                                    line.estimated_unit_cost,
-                                                ),
-                                        0,
-                                    );
+                                    {activeLots.map((lot, position) => {
+                                        const children = lines.filter(
+                                            (line) => line.lot_id === lot.id,
+                                        );
+                                        const lotSubtotal = children.reduce(
+                                            (sum, line) =>
+                                                sum +
+                                                line.quantity_requested *
+                                                    Number(
+                                                        line.estimated_unit_cost,
+                                                    ),
+                                            0,
+                                        );
 
-                                    return (
-                                        <Collapsible
-                                            key={lot.id}
-                                            defaultOpen
-                                            className="border-primary/40 overflow-hidden rounded-lg border"
-                                            data-testid="cart-lot"
-                                        >
-                                            <div className="bg-primary/[0.06] dark:bg-primary/10 flex flex-wrap items-center gap-2 border-b px-3 py-2">
-                                                <CollapsibleTrigger asChild>
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="size-8 shrink-0 [&[data-state=open]>svg]:rotate-90"
-                                                        aria-label={`Toggle ${lot.name || 'lot'}`}
-                                                    >
-                                                        <ChevronRight className="size-4 transition-transform" />
-                                                    </Button>
-                                                </CollapsibleTrigger>
-                                                <Badge className="shrink-0">
-                                                    <Layers />
-                                                    Lot
-                                                </Badge>
-                                                <Label
-                                                    htmlFor={`lot-name-${lot.id}`}
-                                                    className="sr-only"
+                                        return (
+                                            <LotDropFrame
+                                                key={lot.id}
+                                                id={`lot-${lot.id}`}
+                                                target={{
+                                                    kind: 'lot',
+                                                    lotId: lot.id,
+                                                    label:
+                                                        lot.name.trim() ||
+                                                        `Lot ${position + 1}`,
+                                                }}
+                                                className="rounded-lg"
+                                            >
+                                                <Collapsible
+                                                    defaultOpen
+                                                    className="border-primary/40 overflow-hidden rounded-lg border"
+                                                    data-testid="cart-lot"
                                                 >
-                                                    Lot name
-                                                </Label>
-                                                <Input
-                                                    id={`lot-name-${lot.id}`}
-                                                    value={lot.name}
-                                                    placeholder="Lot name"
-                                                    onChange={(event) =>
-                                                        renameLot(
-                                                            lot.id,
-                                                            event.target.value,
-                                                        )
-                                                    }
-                                                    className="h-8 min-w-40 flex-1 font-medium"
-                                                />
-                                                <span className="text-muted-foreground text-sm whitespace-nowrap tabular-nums">
-                                                    {children.length} items ·{' '}
-                                                    <span className="text-foreground font-medium">
-                                                        {formatMoney(
-                                                            lotSubtotal,
-                                                        )}
-                                                    </span>
-                                                </span>
-                                                {selectedStandalone.length >
-                                                0 ? (
-                                                    <Button
-                                                        type="button"
-                                                        size="sm"
-                                                        onClick={() =>
-                                                            addSelectedToLot(
-                                                                lot.id,
-                                                            )
-                                                        }
-                                                        data-testid="add-selected-to-lot"
-                                                    >
-                                                        <Plus />
-                                                        Add{' '}
-                                                        {
-                                                            selectedStandalone.length
-                                                        }{' '}
-                                                        selected here
-                                                    </Button>
-                                                ) : null}
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() =>
-                                                        ungroupLot(lot.id)
-                                                    }
-                                                >
-                                                    Ungroup
-                                                </Button>
-                                            </div>
-                                            <CollapsibleContent>
-                                                <div className="border-primary/60 my-2 mr-2 ml-6 divide-y border-l-2">
-                                                    {children.map((line) => (
-                                                        <CartLineRow
-                                                            key={
-                                                                line.ppmp_item_id
-                                                            }
-                                                            variant="nested"
-                                                            line={line}
-                                                            item={itemsById.get(
-                                                                line.ppmp_item_id,
-                                                            )}
-                                                            lotOptions={
-                                                                lotOptions
-                                                            }
-                                                            selectable={false}
-                                                            selected={false}
-                                                            onToggleSelected={() =>
-                                                                undefined
-                                                            }
-                                                            onMoveToLot={(
-                                                                lotId,
-                                                            ) =>
-                                                                moveLinesToLot(
-                                                                    [
-                                                                        line.ppmp_item_id,
-                                                                    ],
-                                                                    lotId,
+                                                    <div className="bg-primary/[0.06] dark:bg-primary/10 flex flex-wrap items-center gap-2 border-b px-3 py-2">
+                                                        <CollapsibleTrigger
+                                                            asChild
+                                                        >
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="size-8 shrink-0 [&[data-state=open]>svg]:rotate-90"
+                                                                aria-label={`Toggle ${lot.name || 'lot'}`}
+                                                            >
+                                                                <ChevronRight className="size-4 transition-transform" />
+                                                            </Button>
+                                                        </CollapsibleTrigger>
+                                                        <Badge className="shrink-0">
+                                                            <Layers />
+                                                            Lot
+                                                        </Badge>
+                                                        <Label
+                                                            htmlFor={`lot-name-${lot.id}`}
+                                                            className="sr-only"
+                                                        >
+                                                            Lot name
+                                                        </Label>
+                                                        <Input
+                                                            id={`lot-name-${lot.id}`}
+                                                            value={lot.name}
+                                                            placeholder="Lot name"
+                                                            onChange={(event) =>
+                                                                renameLot(
+                                                                    lot.id,
+                                                                    event.target
+                                                                        .value,
                                                                 )
                                                             }
-                                                            onDescriptionChange={
-                                                                setLineDescription
-                                                            }
-                                                            onUnitCostChange={
-                                                                setLineUnitCost
-                                                            }
-                                                            onQuantityChange={
-                                                                setLineQuantity
-                                                            }
-                                                            onRemove={
-                                                                removeLine
-                                                            }
+                                                            className="h-8 min-w-40 flex-1 font-medium"
                                                         />
-                                                    ))}
+                                                        <span className="text-muted-foreground text-sm whitespace-nowrap tabular-nums">
+                                                            {children.length}{' '}
+                                                            items ·{' '}
+                                                            <span className="text-foreground font-medium">
+                                                                {formatMoney(
+                                                                    lotSubtotal,
+                                                                )}
+                                                            </span>
+                                                        </span>
+                                                        {selectedStandalone.length >
+                                                        0 ? (
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    addSelectedToLot(
+                                                                        lot.id,
+                                                                    )
+                                                                }
+                                                                data-testid="add-selected-to-lot"
+                                                            >
+                                                                <Plus />
+                                                                Add{' '}
+                                                                {
+                                                                    selectedStandalone.length
+                                                                }{' '}
+                                                                selected here
+                                                            </Button>
+                                                        ) : null}
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() =>
+                                                                ungroupLot(
+                                                                    lot.id,
+                                                                )
+                                                            }
+                                                        >
+                                                            Ungroup
+                                                        </Button>
+                                                    </div>
+                                                    <CollapsibleContent>
+                                                        <div className="border-primary/60 my-2 mr-2 ml-6 divide-y border-l-2">
+                                                            {children.map(
+                                                                (line) => (
+                                                                    <CartLineRow
+                                                                        key={
+                                                                            line.ppmp_item_id
+                                                                        }
+                                                                        variant="nested"
+                                                                        line={
+                                                                            line
+                                                                        }
+                                                                        drag={dragFor(
+                                                                            line,
+                                                                        )}
+                                                                        item={itemsById.get(
+                                                                            line.ppmp_item_id,
+                                                                        )}
+                                                                        lotOptions={
+                                                                            lotOptions
+                                                                        }
+                                                                        selectable={
+                                                                            false
+                                                                        }
+                                                                        selected={
+                                                                            false
+                                                                        }
+                                                                        onToggleSelected={() =>
+                                                                            undefined
+                                                                        }
+                                                                        onMoveToLot={(
+                                                                            lotId,
+                                                                        ) =>
+                                                                            moveLinesToLot(
+                                                                                [
+                                                                                    line.ppmp_item_id,
+                                                                                ],
+                                                                                lotId,
+                                                                            )
+                                                                        }
+                                                                        onDescriptionChange={
+                                                                            setLineDescription
+                                                                        }
+                                                                        onUnitCostChange={
+                                                                            setLineUnitCost
+                                                                        }
+                                                                        onQuantityChange={
+                                                                            setLineQuantity
+                                                                        }
+                                                                        onRemove={
+                                                                            removeLine
+                                                                        }
+                                                                    />
+                                                                ),
+                                                            )}
+                                                        </div>
+                                                    </CollapsibleContent>
+                                                </Collapsible>
+                                            </LotDropFrame>
+                                        );
+                                    })}
+
+                                    {standaloneLines.length > 0 ? (
+                                        <LotDropFrame
+                                            id="cart-ungrouped"
+                                            target={{ kind: 'ungrouped' }}
+                                            className="space-y-3 rounded-lg"
+                                            data-testid="cart-ungrouped"
+                                        >
+                                            {activeLots.length > 0 ? (
+                                                <div className="flex items-baseline justify-between gap-2 pt-3">
+                                                    <h3 className="text-sm font-medium">
+                                                        Individual items (
+                                                        {standaloneLines.length}
+                                                        )
+                                                    </h3>
+                                                    <p className="text-muted-foreground text-xs">
+                                                        Not in a lot
+                                                    </p>
                                                 </div>
-                                            </CollapsibleContent>
-                                        </Collapsible>
-                                    );
-                                })}
+                                            ) : null}
 
-                                {standaloneLines.length > 0 &&
-                                activeLots.length > 0 ? (
-                                    <div className="flex items-baseline justify-between gap-2 pt-3">
-                                        <h3 className="text-sm font-medium">
-                                            Individual items (
-                                            {standaloneLines.length})
-                                        </h3>
-                                        <p className="text-muted-foreground text-xs">
-                                            Not in a lot
-                                        </p>
-                                    </div>
-                                ) : null}
-
-                                {standaloneLines.length > 0 ? (
-                                    <div
-                                        ref={standaloneListRef}
-                                        className={cn(
-                                            'space-y-3',
-                                            isSelecting && 'select-none',
-                                        )}
-                                    >
-                                        {standaloneLines.map((line) => (
-                                            <CartLineRow
-                                                key={line.ppmp_item_id}
-                                                line={line}
-                                                item={itemsById.get(
-                                                    line.ppmp_item_id,
+                                            <div
+                                                ref={standaloneListRef}
+                                                className={cn(
+                                                    'space-y-3',
+                                                    isSelecting &&
+                                                        'select-none',
                                                 )}
-                                                lotOptions={lotOptions}
-                                                selectable
-                                                selected={selectedIds.includes(
-                                                    line.ppmp_item_id,
-                                                )}
-                                                onToggleSelected={
-                                                    toggleSelected
-                                                }
-                                                onActivate={() =>
-                                                    activateLine(
-                                                        line.ppmp_item_id,
-                                                        selectedIds.includes(
+                                            >
+                                                {standaloneLines.map((line) => (
+                                                    <CartLineRow
+                                                        key={line.ppmp_item_id}
+                                                        line={line}
+                                                        drag={dragFor(line)}
+                                                        dropTarget
+                                                        item={itemsById.get(
                                                             line.ppmp_item_id,
-                                                        ),
-                                                    )
-                                                }
-                                                onPointerDown={(event) =>
-                                                    beginPaint(
-                                                        line.ppmp_item_id,
-                                                        selectedIds.includes(
+                                                        )}
+                                                        lotOptions={lotOptions}
+                                                        selectable
+                                                        selected={selectedIds.includes(
                                                             line.ppmp_item_id,
-                                                        ),
-                                                        event,
-                                                    )
-                                                }
-                                                onMoveToLot={(lotId) =>
-                                                    moveLinesToLot(
-                                                        [line.ppmp_item_id],
-                                                        lotId,
-                                                    )
-                                                }
-                                                onDescriptionChange={
-                                                    setLineDescription
-                                                }
-                                                onUnitCostChange={
-                                                    setLineUnitCost
-                                                }
-                                                onQuantityChange={
-                                                    setLineQuantity
-                                                }
-                                                onRemove={removeLine}
-                                            />
-                                        ))}
-                                    </div>
-                                ) : null}
-                            </>
-                        )}
+                                                        )}
+                                                        onToggleSelected={
+                                                            toggleSelected
+                                                        }
+                                                        onActivate={() =>
+                                                            activateLine(
+                                                                line.ppmp_item_id,
+                                                                selectedIds.includes(
+                                                                    line.ppmp_item_id,
+                                                                ),
+                                                            )
+                                                        }
+                                                        onPointerDown={(
+                                                            event,
+                                                        ) =>
+                                                            beginPaint(
+                                                                line.ppmp_item_id,
+                                                                selectedIds.includes(
+                                                                    line.ppmp_item_id,
+                                                                ),
+                                                                event,
+                                                            )
+                                                        }
+                                                        onMoveToLot={(lotId) =>
+                                                            moveLinesToLot(
+                                                                [
+                                                                    line.ppmp_item_id,
+                                                                ],
+                                                                lotId,
+                                                            )
+                                                        }
+                                                        onDescriptionChange={
+                                                            setLineDescription
+                                                        }
+                                                        onUnitCostChange={
+                                                            setLineUnitCost
+                                                        }
+                                                        onQuantityChange={
+                                                            setLineQuantity
+                                                        }
+                                                        onRemove={removeLine}
+                                                    />
+                                                ))}
+                                            </div>
+                                        </LotDropFrame>
+                                    ) : null}
+                                </>
+                            )}
 
-                        {itemErrors.map(([key, message]) => (
-                            <InputError key={key} message={message} />
-                        ))}
-                    </CardContent>
-                </Card>
-            </div>
+                            {itemErrors.map(([key, message]) => (
+                                <InputError key={key} message={message} />
+                            ))}
+                        </CardContent>
+                    </Card>
+                </div>
+            </LotDndContext>
         </CatalogContext.Provider>
     );
 }
@@ -1243,8 +1425,8 @@ function SelectionToolbar({
             <p className="bg-muted/40 text-muted-foreground flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
                 <Layers className="size-4 shrink-0" />
                 {lotOptions.length > 0
-                    ? 'Tick items (or drag across them) to group them as a new lot or add them to an existing lot. Use ⋯ on a row to move one item.'
-                    : 'Tick 2 or more items (or drag across them) to group them as a lot.'}
+                    ? 'Tick items (or drag across them) to group them as a new lot or add them to an existing lot. Or drag a row by its grip onto a lot.'
+                    : 'Tick 2 or more items (or drag across them) to group them as a lot. Or drag a row by its grip onto another row.'}
             </p>
         );
     }
@@ -1306,7 +1488,12 @@ function SelectionToolbar({
                         </DropdownMenuContent>
                     </DropdownMenu>
                 ) : null}
-                <Button type="button" size="sm" variant="ghost" onClick={onClear}>
+                <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={onClear}
+                >
                     <X />
                     Clear
                 </Button>
@@ -1315,9 +1502,44 @@ function SelectionToolbar({
     );
 }
 
+/** Drop areas that only exist while dragging: a new lot, and "individual items" when that list is empty. */
+function CartDragZones({ showUngrouped }: { showUngrouped: boolean }) {
+    const activeDrag = useActiveLotDrag();
+
+    if (activeDrag === null) {
+        return null;
+    }
+
+    return (
+        <div className="grid gap-2 sm:grid-cols-2">
+            <LotDropFrame
+                id="cart-new-lot"
+                target={{ kind: 'new-lot' }}
+                className="text-muted-foreground flex min-h-14 items-center justify-center gap-2 rounded-lg border border-dashed p-3 text-sm"
+                data-testid="cart-new-lot-zone"
+            >
+                <Layers className="size-4" />
+                Drop here for a new lot
+            </LotDropFrame>
+            {showUngrouped ? (
+                <LotDropFrame
+                    id="cart-ungrouped-empty"
+                    target={{ kind: 'ungrouped' }}
+                    className="text-muted-foreground flex min-h-14 items-center justify-center gap-2 rounded-lg border border-dashed p-3 text-sm"
+                >
+                    <CornerUpLeft className="size-4" />
+                    Drop here to take out of its lot
+                </LotDropFrame>
+            ) : null}
+        </div>
+    );
+}
+
 function CartLineRow({
     variant = 'card',
     line,
+    drag,
+    dropTarget = false,
     item,
     lotOptions,
     selectable,
@@ -1333,6 +1555,8 @@ function CartLineRow({
 }: {
     variant?: 'card' | 'nested';
     line: PurchaseRequestCartLine;
+    drag: LotDragData;
+    dropTarget?: boolean;
     item: AvailablePpmpItem | undefined;
     lotOptions: LotOption[];
     selectable: boolean;
@@ -1351,9 +1575,18 @@ function CartLineRow({
         line.quantity_requested * Number(line.estimated_unit_cost);
     const otherLots = lotOptions.filter((lot) => lot.id !== line.lot_id);
     const label = line.item_name || item?.item_name || 'item';
+    const activeDrag = useActiveLotDrag();
+    const isBeingDragged =
+        activeDrag?.itemIds.includes(line.ppmp_item_id) ?? false;
+    const drop = useLotDropZone(
+        `line-${line.ppmp_item_id}`,
+        { kind: 'line', lineId: line.ppmp_item_id, label },
+        !dropTarget,
+    );
 
     return (
         <div
+            ref={drop.setNodeRef}
             data-cart-line-id={selectable ? line.ppmp_item_id : undefined}
             onClick={
                 selectable
@@ -1390,27 +1623,41 @@ function CartLineRow({
                     : undefined
             }
             className={cn(
-                'grid items-end gap-3 transition-colors',
+                'relative grid items-end gap-3 transition-[color,background-color,opacity,box-shadow]',
                 variant === 'nested'
-                    ? 'px-3 py-3 md:grid-cols-[minmax(0,1fr)_5.5rem_5.5rem_7rem_7rem_auto]'
+                    ? 'px-3 py-3 md:grid-cols-[auto_minmax(0,1fr)_5.5rem_5.5rem_7rem_7rem_auto]'
                     : 'hover:border-primary/40 rounded-lg border p-3 md:grid-cols-[auto_minmax(0,1fr)_5.5rem_5.5rem_7rem_7rem_auto]',
                 selectable && 'cursor-pointer',
                 selected && 'bg-accent ring-ring ring-2',
+                drop.action !== null && lotDropZoneClass(true, drop.action),
+                isBeingDragged && 'opacity-50',
             )}
         >
-            {selectable ? (
-                <Checkbox
-                    checked={selected}
-                    onCheckedChange={(checked) =>
-                        onToggleSelected(line.ppmp_item_id, checked === true)
-                    }
-                    onClick={(event) => event.stopPropagation()}
-                    aria-label={`Select ${label}`}
-                    className="self-center"
+            <div className="flex items-center gap-1 self-center">
+                <LotDragHandle
+                    id={`line-${line.ppmp_item_id}`}
+                    drag={drag}
+                    data-cart-line-ignore=""
+                    data-testid="cart-drag-handle"
                 />
-            ) : variant === 'card' ? (
-                <span />
-            ) : null}
+                {selectable ? (
+                    <Checkbox
+                        checked={selected}
+                        onCheckedChange={(checked) =>
+                            onToggleSelected(
+                                line.ppmp_item_id,
+                                checked === true,
+                            )
+                        }
+                        onClick={(event) => event.stopPropagation()}
+                        aria-label={`Select ${label}`}
+                    />
+                ) : null}
+            </div>
+            <LotDropHint
+                action={drop.action}
+                className="absolute top-2 right-2 z-20"
+            />
             <div className="min-w-0 space-y-1" data-cart-line-ignore="">
                 <Label htmlFor={`cart-name-${line.ppmp_item_id}`}>
                     Item description
