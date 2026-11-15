@@ -127,6 +127,37 @@ test('destroying a lot detaches its children', function () {
         ->and($this->purchaseRequest->items()->whereNotNull('parent_lot_id')->count())->toBe(0);
 });
 
+test('updating a lot can add a standalone item and recalculates the lot total', function () {
+    $ids = $this->purchaseRequest->items()->pluck('id')->all();
+
+    $this->actingAs($this->supplyOfficer)
+        ->post(route('supply.purchase-requests.lots.store', $this->purchaseRequest), [
+            'lot_name' => 'Office lot',
+            'item_ids' => $ids,
+        ])
+        ->assertRedirect();
+
+    $lot = $this->purchaseRequest->items()->where('is_lot', true)->first();
+
+    $third = PurchaseRequestItem::factory()->for($this->purchaseRequest)->create([
+        'item_name' => 'Item C',
+        'quantity_requested' => 1,
+        'estimated_unit_cost' => 75,
+        'estimated_total_cost' => 75,
+    ]);
+
+    $this->actingAs($this->supplyOfficer)
+        ->put(route('supply.purchase-requests.lots.update', [$this->purchaseRequest, $lot]), [
+            'lot_name' => 'Office lot',
+            'item_ids' => [...$ids, $third->id],
+        ])
+        ->assertSessionHasNoErrors()
+        ->assertRedirect();
+
+    expect(PurchaseRequestItem::query()->where('parent_lot_id', $lot->id)->count())->toBe(3)
+        ->and((float) $lot->fresh()->estimated_total_cost)->toBe(275.0);
+});
+
 test('replacement after return archives the original purchase request', function () {
     Notification::fake();
 

@@ -1,5 +1,5 @@
 import { Head, router, useForm } from '@inertiajs/react';
-import { Download, Layers, Package, Pencil, Search, Unlink, X } from 'lucide-react';
+import { ChevronDown, Download, Layers, Package, Pencil, Plus, Search, Unlink, X } from 'lucide-react';
 import { Fragment, useState } from 'react';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
@@ -15,6 +15,13 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -275,6 +282,43 @@ export default function SupplyPurchaseRequestShow({
         lotForm.post(storeLot.url(purchaseRequest.id), options);
     };
 
+    const childIdsOf = (lotId: number): number[] =>
+        lineItems.filter((item) => item.parent_lot_id === lotId).map((item) => item.id);
+
+    /** Replace a lot's members while keeping its name; updateLot recalculates the lot total. */
+    const saveLotMembers = (lot: Item, itemIds: number[]) => {
+        lotForm.transform(() => ({
+            lot_name: lot.lot_name ?? '',
+            item_ids: itemIds,
+        }));
+        lotForm.put(updateLot.url({ purchaseRequest: purchaseRequest.id, lot: lot.id }), {
+            preserveScroll: true,
+            onSuccess: clearSelection,
+        });
+    };
+
+    const addSelectedToLot = (lot: Item) => {
+        saveLotMembers(lot, [...childIdsOf(lot.id), ...selectedIds]);
+    };
+
+    const removeFromLot = (item: Item) => {
+        const lot = lots.find((candidate) => candidate.id === item.parent_lot_id);
+
+        if (!lot) {
+            return;
+        }
+
+        const remainingIds = childIdsOf(lot.id).filter((id) => id !== item.id);
+
+        if (remainingIds.length < 2) {
+            setLotPendingRemoval(lot);
+
+            return;
+        }
+
+        saveLotMembers(lot, remainingIds);
+    };
+
     const confirmRemoveLot = () => {
         if (!lotPendingRemoval) {
             return;
@@ -362,7 +406,21 @@ export default function SupplyPurchaseRequestShow({
                 </td>
                 <td className={`px-3 py-2.5 ${isChild ? 'pl-8' : ''}`}>
                     <p className="text-muted-foreground font-mono text-xs">{item.item_code}</p>
-                    <p>{itemLabel(item)}</p>
+                    <div className="flex items-start justify-between gap-2">
+                        <p>{itemLabel(item)}</p>
+                        {isChild && canManageLots && !editingSpecs && editingLotId === null && (
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-muted-foreground hover:text-destructive -my-1 h-7 shrink-0 px-2 text-xs"
+                                disabled={lotForm.processing}
+                                onClick={() => removeFromLot(item)}
+                            >
+                                <X />
+                                Remove from lot
+                            </Button>
+                        )}
+                    </div>
                     {editingSpecs ? (
                         <Textarea
                             aria-label={`Specifications for ${itemLabel(item)}`}
@@ -560,7 +618,7 @@ export default function SupplyPurchaseRequestShow({
                                 <div className="flex items-center gap-2">
                                     {canManageLots && !editingSpecs && selectedIds.length === 0 && (
                                         <p className="text-muted-foreground hidden text-xs md:block">
-                                            Select 2+ items to group them into a lot
+                                            Select items to create a lot or add them to an existing one
                                         </p>
                                     )}
                                     {canEditDetails &&
@@ -633,6 +691,26 @@ export default function SupplyPurchaseRequestShow({
                                                             </span>
                                                             {canManageLots && !editingSpecs && (
                                                                 <span className="ml-auto flex gap-1">
+                                                                    {editingLotId === null &&
+                                                                        selectedIds.length > 0 && (
+                                                                            <Button
+                                                                                size="sm"
+                                                                                variant="outline"
+                                                                                disabled={
+                                                                                    lotForm.processing
+                                                                                }
+                                                                                onClick={() =>
+                                                                                    addSelectedToLot(
+                                                                                        lot,
+                                                                                    )
+                                                                                }
+                                                                            >
+                                                                                <Plus />
+                                                                                Add{' '}
+                                                                                {selectedIds.length}{' '}
+                                                                                selected
+                                                                            </Button>
+                                                                        )}
                                                                     <Button
                                                                         size="sm"
                                                                         variant="ghost"
@@ -744,6 +822,38 @@ export default function SupplyPurchaseRequestShow({
                                             <X />
                                             Clear
                                         </Button>
+                                        {!editingLot && lots.length > 0 && selectedIds.length > 0 && (
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button
+                                                        variant="outline"
+                                                        disabled={lotForm.processing}
+                                                    >
+                                                        Add to lot
+                                                        <ChevronDown />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end" className="w-64">
+                                                    <DropdownMenuLabel>
+                                                        Add {selectedIds.length} selected to
+                                                    </DropdownMenuLabel>
+                                                    {lots.map((lot) => (
+                                                        <DropdownMenuItem
+                                                            key={lot.id}
+                                                            onSelect={() => addSelectedToLot(lot)}
+                                                        >
+                                                            <Layers />
+                                                            <span className="truncate">
+                                                                {lot.lot_name}
+                                                            </span>
+                                                            <span className="text-muted-foreground ml-auto text-xs">
+                                                                {childIdsOf(lot.id).length} items
+                                                            </span>
+                                                        </DropdownMenuItem>
+                                                    ))}
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        )}
                                         <Button
                                             disabled={
                                                 lotForm.processing ||
