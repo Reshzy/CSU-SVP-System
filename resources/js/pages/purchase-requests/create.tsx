@@ -11,6 +11,10 @@ import {
     type PurchaseRequestCartLine,
     type PurchaseRequestCartLot,
 } from '@/components/purchase-request-item-picker';
+import {
+    PurchaseRequestSignatories,
+    type Signatories,
+} from '@/components/purchase-request-signatories';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -35,6 +39,7 @@ type Props = {
     ppmpId: number | null;
     canUpdatePpmp: boolean;
     availableItems: AvailablePpmpItem[];
+    signatories: Signatories;
     replacing?: ReplacingPurchaseRequest | null;
 };
 
@@ -57,6 +62,7 @@ export default function PurchaseRequestCreate({
     ppmpId,
     canUpdatePpmp,
     availableItems,
+    signatories,
     replacing = null,
 }: Props) {
     const submitUrl = replacing
@@ -253,6 +259,10 @@ export default function PurchaseRequestCreate({
                             errors={form.errors}
                             ppmpId={ppmpId}
                             canUpdatePpmp={canUpdatePpmp}
+                        />
+
+                        <PurchaseRequestSignatories
+                            signatories={signatories}
                         />
 
                         <div className="bg-card sticky bottom-0 z-20 -mx-4 -mb-4 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 shadow-[0_-8px_24px_-12px_rgb(0_0_0/0.35)]">

@@ -33,7 +33,7 @@ class PurchaseRequestCreator
     /**
      * Props shared by the new and replacement purchase request forms.
      *
-     * @return array{fiscalYear: int, quarter: int, hasValidatedPpmp: bool, ppmpId: int|null, canUpdatePpmp: bool, availableItems: Collection<int, array<string, mixed>>|list<never>}
+     * @return array{fiscalYear: int, quarter: int, hasValidatedPpmp: bool, ppmpId: int|null, canUpdatePpmp: bool, availableItems: Collection<int, array<string, mixed>>|list<never>, signatories: array<string, mixed>}
      */
     public function formProps(User $user, ?int $excludePurchaseRequestId = null): array
     {
@@ -46,6 +46,29 @@ class PurchaseRequestCreator
             'ppmpId' => $ppmp?->id,
             'canUpdatePpmp' => $ppmp !== null && Gate::forUser($user)->allows('update', $ppmp),
             'availableItems' => $ppmp === null ? [] : $this->availableItems($ppmp, $excludePurchaseRequestId),
+            'signatories' => $this->signatories($user->loadMissing('position'), isRequester: true),
+        ];
+    }
+
+    /**
+     * Names and designations printed in the PR form's signature block.
+     *
+     * @return array{requestedBy: array{name: string|null, designation: string|null}, approvedBy: array{name: string|null, designation: string|null}, isRequester: bool}
+     */
+    public function signatories(?User $requester, bool $isRequester): array
+    {
+        $executiveOfficer = User::signingExecutiveOfficer();
+
+        return [
+            'requestedBy' => [
+                'name' => $requester?->name,
+                'designation' => $requester?->signatureDesignation(),
+            ],
+            'approvedBy' => [
+                'name' => $executiveOfficer?->name,
+                'designation' => PurchaseRequestExportService::approverDesignation($executiveOfficer),
+            ],
+            'isRequester' => $isRequester,
         ];
     }
 

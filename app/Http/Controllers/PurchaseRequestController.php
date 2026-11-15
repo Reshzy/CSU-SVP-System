@@ -6,7 +6,6 @@ use App\Concerns\FlashesToasts;
 use App\Http\Requests\ListQueryRequest;
 use App\Http\Requests\PurchaseRequest\StorePurchaseRequestRequest;
 use App\Models\PurchaseRequest;
-use App\Models\User;
 use App\Policies\PurchaseRequestPolicy;
 use App\Services\PurchaseRequestCreator;
 use App\Services\PurchaseRequestExportService;
@@ -101,7 +100,7 @@ class PurchaseRequestController extends Controller
         return redirect()->route('purchase-requests.show', $purchaseRequest);
     }
 
-    public function show(Request $request, PurchaseRequest $purchaseRequest): Response
+    public function show(Request $request, PurchaseRequest $purchaseRequest, PurchaseRequestCreator $creator): Response
     {
         Gate::authorize('view', $purchaseRequest);
 
@@ -116,23 +115,14 @@ class PurchaseRequestController extends Controller
             'replacedBy:id,pr_number',
         ]);
 
-        $executiveOfficer = User::signingExecutiveOfficer();
-
         return Inertia::render('purchase-requests/show', [
             'purchaseRequest' => $purchaseRequest,
             'statusLabel' => $purchaseRequest->statusLabel(),
             'canCreateReplacement' => $purchaseRequest->canBeReplacedBy($request->user()),
-            'signatories' => [
-                'requestedBy' => [
-                    'name' => $purchaseRequest->requester?->name,
-                    'designation' => $purchaseRequest->requester?->signatureDesignation(),
-                ],
-                'approvedBy' => [
-                    'name' => $executiveOfficer?->name,
-                    'designation' => PurchaseRequestExportService::approverDesignation($executiveOfficer),
-                ],
-                'isRequester' => $purchaseRequest->requester_id === $request->user()->id,
-            ],
+            'signatories' => $creator->signatories(
+                $purchaseRequest->requester,
+                isRequester: $purchaseRequest->requester_id === $request->user()->id,
+            ),
         ]);
     }
 

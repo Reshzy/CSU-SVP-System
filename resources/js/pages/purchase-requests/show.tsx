@@ -1,10 +1,13 @@
 import { Head, Link } from '@inertiajs/react';
-import { Building2, CalendarDays, Download, GitBranch, Layers, Pencil, RotateCcw, UserRound, Wallet } from 'lucide-react';
+import { Building2, CalendarDays, Download, GitBranch, Layers, RotateCcw, UserRound, Wallet } from 'lucide-react';
 import { Fragment } from 'react';
 import { PrTimeline, type TimelineActivity } from '@/components/pr-timeline';
+import {
+    PurchaseRequestSignatories,
+    type Signatories,
+} from '@/components/purchase-request-signatories';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { edit } from '@/routes/profile';
 import { exportMethod, index, show } from '@/routes/purchase-requests';
 import { create as replacementCreate } from '@/routes/purchase-requests/replacement';
 
@@ -45,17 +48,6 @@ type PurchaseRequest = {
     returned_by: { id: number; name: string } | number | null;
     replaces: { id: number; pr_number: string | null } | null;
     replaced_by: { id: number; pr_number: string | null } | null;
-};
-
-type Signatory = {
-    name: string | null;
-    designation: string | null;
-};
-
-type Signatories = {
-    requestedBy: Signatory;
-    approvedBy: Signatory;
-    isRequester: boolean;
 };
 
 type Props = {
@@ -110,19 +102,6 @@ function StatTile({
             <dd className={`truncate text-sm font-medium ${muted ? 'text-muted-foreground' : ''}`}>
                 {children}
             </dd>
-        </div>
-    );
-}
-
-function SignatoryBlock({ label, signatory }: { label: string; signatory: Signatory }) {
-    return (
-        <div className="space-y-1">
-            <p className="text-muted-foreground text-xs tracking-wide uppercase">{label}</p>
-            <div className="border-foreground/15 mt-6 border-b" aria-hidden />
-            <p className="pt-1 font-medium">{signatory.name ?? 'Not set'}</p>
-            <p className="text-muted-foreground text-sm italic">
-                {signatory.designation ?? 'No designation'}
-            </p>
         </div>
     );
 }
@@ -411,33 +390,7 @@ export default function PurchaseRequestShow({
                             </div>
                         </section>
 
-                        {/* Signatories */}
-                        <section
-                            className="bg-card rounded-lg border p-5 text-sm"
-                            data-testid="pr-signatories"
-                        >
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                                <h2 className="font-medium">Signatories</h2>
-                                {signatories.isRequester && (
-                                    <Button variant="ghost" size="sm" asChild>
-                                        <Link href={edit()}>
-                                            <Pencil />
-                                            Edit your name or designation
-                                        </Link>
-                                    </Button>
-                                )}
-                            </div>
-                            <div className="mt-4 grid gap-8 sm:grid-cols-2">
-                                <SignatoryBlock
-                                    label="Requested by"
-                                    signatory={signatories.requestedBy}
-                                />
-                                <SignatoryBlock
-                                    label="Approved by"
-                                    signatory={signatories.approvedBy}
-                                />
-                            </div>
-                        </section>
+                        <PurchaseRequestSignatories signatories={signatories} />
                     </div>
 
                     {/* Timeline */}

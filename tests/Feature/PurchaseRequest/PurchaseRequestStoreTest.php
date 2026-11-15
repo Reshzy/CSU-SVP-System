@@ -224,6 +224,22 @@ test('creating a purchase request offers unused earlier-quarter quantity', funct
         );
 });
 
+test('the create page lists the signatories that will print on the request', function () {
+    $this->dean->update(['name' => 'Dr. Manny S. Alipio', 'designation' => 'College Dean']);
+    User::factory()->create(['name' => 'Rodel Francisco T. Alegado'])->assignRole('Executive Officer');
+
+    $this->actingAs($this->dean)
+        ->get(route('purchase-requests.create'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('purchase-requests/create')
+            ->where('signatories.requestedBy.name', 'Dr. Manny S. Alipio')
+            ->where('signatories.requestedBy.designation', 'College Dean')
+            ->where('signatories.approvedBy.name', 'Rodel Francisco T. Alegado')
+            ->where('signatories.isRequester', true)
+        );
+});
+
 test('unused quantity from an earlier quarter can be requested now', function () {
     Notification::fake();
     $this->travelTo(now()->setDate((int) now()->year, 5, 15));

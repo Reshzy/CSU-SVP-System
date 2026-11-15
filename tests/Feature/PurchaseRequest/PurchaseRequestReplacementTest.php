@@ -105,6 +105,8 @@ test('the replacement form is prefilled and counts the returned quantity as avai
             ->where('replacing.lines.0.ppmp_item_id', $this->ppmpItem->id)
             ->where('replacing.lines.0.quantity_requested', 10)
             ->where('availableItems.0.remaining_qty', 10)
+            ->where('signatories.requestedBy.name', $this->dean->name)
+            ->where('signatories.isRequester', true)
         );
 });
 
