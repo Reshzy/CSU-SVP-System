@@ -63,6 +63,7 @@ beforeEach(function () {
         'department_id' => $this->department->id,
         'requester_id' => $this->dean->id,
         'return_remarks' => 'Specify the ballpen colour.',
+        'justification' => 'Stock ran out mid-semester.',
         'returned_by' => $this->supplyOfficer->id,
         'returned_at' => now(),
     ]);
@@ -77,6 +78,7 @@ beforeEach(function () {
     $this->replacementPayload = [
         'pr_title' => 'Ballpens, black',
         'purpose' => 'For classes',
+        'justification' => 'Needed before midterms.',
         'items' => [
             ['ppmp_item_id' => $this->ppmpItem->id, 'quantity_requested' => 10],
         ],
@@ -102,6 +104,7 @@ test('the replacement form is prefilled and counts the returned quantity as avai
             ->component('purchase-requests/create')
             ->where('replacing.id', $this->returned->id)
             ->where('replacing.return_remarks', 'Specify the ballpen colour.')
+            ->where('replacing.justification', 'Stock ran out mid-semester.')
             ->where('replacing.lines.0.ppmp_item_id', $this->ppmpItem->id)
             ->where('replacing.lines.0.quantity_requested', 10)
             ->where('availableItems.0.remaining_qty', 10)
@@ -121,6 +124,8 @@ test('a replacement can request the full quantity the returned request held', fu
 
     expect($replacement)->not->toBeNull()
         ->and($replacement->status)->toBe('supply_office_review')
+        ->and($replacement->purpose)->toBe('For classes')
+        ->and($replacement->justification)->toBe('Needed before midterms.')
         ->and($replacement->items()->first()->quantity_requested)->toBe(10)
         ->and($original->is_archived)->toBeTrue()
         ->and($original->replaced_by_pr_id)->toBe($replacement->id)

@@ -30,6 +30,7 @@ class PurchaseRequestReplacementController extends Controller
                 'pr_number' => $purchaseRequest->pr_number,
                 'pr_title' => $purchaseRequest->pr_title,
                 'purpose' => $purchaseRequest->purpose,
+                'justification' => $purchaseRequest->justification,
                 'return_remarks' => $purchaseRequest->return_remarks,
                 'returned_at' => $purchaseRequest->returned_at?->toIso8601String(),
                 'returned_by_name' => $purchaseRequest->returnedBy?->name,

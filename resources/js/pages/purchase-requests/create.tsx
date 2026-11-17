@@ -48,6 +48,7 @@ type ReplacingPurchaseRequest = {
     pr_number: string | null;
     pr_title: string | null;
     purpose: string | null;
+    justification: string | null;
     return_remarks: string | null;
     returned_at: string | null;
     returned_by_name: string | null;
@@ -71,6 +72,7 @@ export default function PurchaseRequestCreate({
     const form = usePrecognitiveForm('post', submitUrl, {
         pr_title: replacing?.pr_title ?? '',
         purpose: replacing?.purpose ?? '',
+        justification: replacing?.justification ?? '',
     });
     const [lines, setLines] = useState<PurchaseRequestCartLine[]>(
         replacing?.lines ?? [],
@@ -168,7 +170,7 @@ export default function PurchaseRequestCreate({
                                 <StepHeading
                                     step={1}
                                     title="Request details"
-                                    description="A short title and why the items are needed."
+                                    description="A short title, the purpose, and an optional justification."
                                 />
                             </CardHeader>
                             <CardContent>
@@ -180,6 +182,9 @@ export default function PurchaseRequestCreate({
                                         const payload = {
                                             pr_title: form.data.pr_title,
                                             purpose: form.data.purpose,
+                                            justification:
+                                                form.data.justification ||
+                                                null,
                                             items: cartItemsPayload(
                                                 lots,
                                                 lines,
@@ -244,6 +249,29 @@ export default function PurchaseRequestCreate({
                                         />
                                         <InputError
                                             message={form.errors.purpose}
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="justification">
+                                            Justification
+                                        </Label>
+                                        <Textarea
+                                            id="justification"
+                                            placeholder="Why these items are needed (optional)"
+                                            value={form.data.justification}
+                                            onChange={(event) =>
+                                                form.setData(
+                                                    'justification',
+                                                    event.target.value,
+                                                )
+                                            }
+                                            onBlur={() =>
+                                                form.validate('justification')
+                                            }
+                                        />
+                                        <InputError
+                                            message={form.errors.justification}
                                         />
                                     </div>
                                 </form>

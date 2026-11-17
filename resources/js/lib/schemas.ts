@@ -59,6 +59,7 @@ export const purchaseRequestItemSchema = z
 export const purchaseRequestCreateSchema = z.object({
     pr_title: z.string().min(1, 'Title is required.').max(255),
     purpose: z.string().min(1, 'Purpose is required.'),
+    justification: z.string().nullable().optional(),
     items: z.array(purchaseRequestItemSchema).min(1, 'Add at least one item.'),
 });
 
