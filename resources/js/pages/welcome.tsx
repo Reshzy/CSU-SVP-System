@@ -343,9 +343,11 @@ export default function Welcome() {
                     className="relative z-10 flex items-center justify-between gap-6 px-6 py-5 lg:px-10"
                 >
                     <div className="flex items-center gap-3">
-                        <span className="grid size-9 place-items-center rounded-full bg-zinc-950 text-[11px] font-semibold tracking-tight text-white">
-                            CS
-                        </span>
+                        <img
+                            src="/csu-logo.svg"
+                            alt="Cagayan State University"
+                            className="h-10 w-auto"
+                        />
                         <span className="text-sm leading-tight font-semibold tracking-tight">
                             CagSU
                             <span className="block font-normal text-zinc-500">
